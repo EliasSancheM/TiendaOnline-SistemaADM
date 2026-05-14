@@ -1,0 +1,377 @@
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Work+Sans:wght@400;500;600;700&display=swap');
+
+/* ========================
+   DESIGN SYSTEM TOKENS
+   ======================== */
+:root {
+  /* Colors */
+  --color-primary: #D4A373;
+  --color-primary-light: #E8C9A5;
+  --color-primary-dark: #B8884D;
+  --color-primary-50: #FDF5EC;
+  --color-primary-100: #F8E6D0;
+  --color-primary-200: #EDD1AF;
+
+  --color-secondary: #A26769;
+  --color-secondary-light: #C08F91;
+  --color-secondary-dark: #7E4E50;
+  --color-secondary-50: #F8EFEF;
+
+  --color-tertiary: #3D2B1F;
+  --color-tertiary-light: #5C4433;
+  --color-tertiary-dark: #2A1C14;
+
+  --color-neutral: #FDFBF7;
+  --color-neutral-50: #FFFFFF;
+  --color-neutral-100: #F7F3ED;
+  --color-neutral-200: #EDE8E0;
+  --color-neutral-300: #D5CFC5;
+  --color-neutral-400: #A9A196;
+  --color-neutral-500: #7D776D;
+  --color-neutral-600: #5C5750;
+  --color-neutral-700: #3E3A35;
+
+  --color-success: #6B9B6B;
+  --color-success-light: #E8F2E8;
+  --color-warning: #D4A348;
+  --color-warning-light: #FFF8EC;
+  --color-error: #A26769;
+  --color-error-light: #F8EFEF;
+  --color-info: #7D8FAF;
+  --color-info-light: #EEF1F6;
+
+  /* Typography */
+  --font-headline: 'Newsreader', Georgia, serif;
+  --font-body: 'Be Vietnam Pro', 'Segoe UI', sans-serif;
+  --font-label: 'Work Sans', 'Segoe UI', sans-serif;
+
+  /* Spacing */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(61, 43, 31, 0.06);
+  --shadow-md: 0 4px 12px rgba(61, 43, 31, 0.08);
+  --shadow-lg: 0 8px 28px rgba(61, 43, 31, 0.10);
+  --shadow-xl: 0 16px 48px rgba(61, 43, 31, 0.12);
+  --shadow-glow: 0 0 24px rgba(212, 163, 115, 0.25);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ========================
+   GLOBAL RESET & BASE
+   ======================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-neutral);
+  color: var(--color-tertiary);
+  line-height: 1.6;
+}
+
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* ========================
+   SCROLLBAR STYLING
+   ======================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-neutral-100);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-primary-light);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* ========================
+   SELECTION HIGHLIGHT
+   ======================== */
+::selection {
+  background: var(--color-primary-200);
+  color: var(--color-tertiary);
+}
+
+/* ========================
+   GLOBAL MUI OVERRIDES
+   ======================== */
+
+/* Card Surfaces */
+.MuiCard-root,
+.MuiPaper-root {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border: 1px solid var(--color-neutral-200);
+  transition: box-shadow var(--transition-normal), transform var(--transition-normal) !important;
+}
+
+.MuiCard-root:hover,
+.MuiPaper-root:hover {
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* AppBar */
+.MuiAppBar-root {
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+/* Table Styling */
+.MuiTableHead-root .MuiTableCell-root {
+  font-family: var(--font-label) !important;
+  font-weight: 600 !important;
+  font-size: 0.78rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--color-neutral-500) !important;
+  background-color: var(--color-neutral-100) !important;
+  border-bottom: 2px solid var(--color-neutral-200) !important;
+  padding: 12px 16px !important;
+}
+
+.MuiTableBody-root .MuiTableCell-root {
+  font-family: var(--font-body) !important;
+  font-size: 0.88rem !important;
+  color: var(--color-tertiary-light) !important;
+  border-bottom: 1px solid var(--color-neutral-200) !important;
+  padding: 14px 16px !important;
+}
+
+.MuiTableRow-root:hover {
+  background-color: var(--color-primary-50) !important;
+}
+
+.MuiTableRow-root:last-child .MuiTableCell-root {
+  border-bottom: none !important;
+}
+
+/* Chip Styling */
+.MuiChip-root {
+  font-family: var(--font-label) !important;
+  font-weight: 500 !important;
+  border-radius: var(--radius-pill) !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* Dialog Styling */
+.MuiDialog-paper {
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
+  border: 1px solid var(--color-neutral-200) !important;
+}
+
+.MuiDialogTitle-root {
+  font-family: var(--font-headline) !important;
+  font-weight: 600 !important;
+  font-size: 1.4rem !important;
+  color: var(--color-tertiary) !important;
+  padding: 24px 28px 12px !important;
+}
+
+.MuiDialogContent-root {
+  padding: 12px 28px 20px !important;
+}
+
+.MuiDialogActions-root {
+  padding: 12px 28px 24px !important;
+  gap: 8px !important;
+}
+
+/* TextField Styling */
+.MuiTextField-root .MuiOutlinedInput-root {
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-body) !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--color-primary) !important;
+}
+
+.MuiTextField-root .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: var(--color-primary-dark) !important;
+  border-width: 2px !important;
+}
+
+.MuiInputLabel-root.Mui-focused {
+  color: var(--color-primary-dark) !important;
+}
+
+.MuiFormLabel-root {
+  font-family: var(--font-label) !important;
+}
+
+/* Button Styling */
+.MuiButton-root {
+  font-family: var(--font-label) !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  border-radius: var(--radius-md) !important;
+  letter-spacing: 0.02em !important;
+  transition: all var(--transition-normal) !important;
+  padding: 8px 20px !important;
+}
+
+.MuiButton-contained {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.MuiButton-contained:hover {
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+
+.MuiButton-contained:active {
+  transform: translateY(0);
+}
+
+.MuiButton-outlined {
+  border-width: 1.5px !important;
+}
+
+/* IconButton */
+.MuiIconButton-root {
+  transition: all var(--transition-fast) !important;
+}
+
+.MuiIconButton-root:hover {
+  background-color: var(--color-primary-50) !important;
+}
+
+/* Snackbar Alert */
+.MuiAlert-root {
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-body) !important;
+}
+
+/* Tab Styling */
+.MuiTab-root {
+  font-family: var(--font-label) !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+  font-size: 0.88rem !important;
+  min-height: 56px !important;
+}
+
+/* Typography Global */
+h1, h2, h3, h4, h5, h6,
+.MuiTypography-h1,
+.MuiTypography-h2,
+.MuiTypography-h3,
+.MuiTypography-h4,
+.MuiTypography-h5,
+.MuiTypography-h6 {
+  font-family: var(--font-headline) !important;
+  color: var(--color-tertiary);
+}
+
+.MuiTypography-body1,
+.MuiTypography-body2,
+.MuiTypography-subtitle1,
+.MuiTypography-subtitle2 {
+  font-family: var(--font-body) !important;
+}
+
+/* ========================
+   TOOLTIP
+   ======================== */
+.MuiTooltip-tooltip {
+  font-family: var(--font-label) !important;
+  font-size: 0.75rem !important;
+  background-color: var(--color-tertiary) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 6px 12px !important;
+}
+
+/* ========================
+   MENU DROPDOWN
+   ======================== */
+.MuiMenu-paper {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--color-neutral-200) !important;
+}
+
+.MuiMenuItem-root {
+  font-family: var(--font-body) !important;
+  border-radius: var(--radius-sm) !important;
+  margin: 2px 8px !important;
+  transition: background-color var(--transition-fast) !important;
+}
+
+.MuiMenuItem-root:hover {
+  background-color: var(--color-primary-50) !important;
+}
+
+/* ========================
+   DATE PICKER OVERRIDES
+   ======================== */
+.MuiPickersDay-root.Mui-selected {
+  background-color: var(--color-primary) !important;
+}
+
+.MuiPickersDay-root:hover {
+  background-color: var(--color-primary-50) !important;
+}
+
+/* ========================
+   DIVIDER
+   ======================== */
+.MuiDivider-root {
+  border-color: var(--color-neutral-200) !important;
+}
+
+/* ========================
+   ANIMATED BACKGROUND
+   ======================== */
+@keyframes warmGlow {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
