@@ -27,6 +27,7 @@ import {
 import { useCart } from '../contexts/CartContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 
 const Checkout = () => {
   const { cart, cartTotal, clearCart } = useCart();
@@ -95,7 +96,7 @@ const Checkout = () => {
         total: cartTotal,
       };
 
-      const response = await axios.post('/api/public/checkout', payload);
+      const response = await axios.post(`${API_BASE_URL}/api/public/checkout`, payload);
       
       if (response.data.success && response.data.token && response.data.url) {
         // Redirigir a Webpay

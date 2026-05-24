@@ -88,8 +88,9 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
     const sessionId = `S-${clienteId}`;
     const amount = calculatedTotal;
     
-    // URL a la que Webpay redirigirá después del pago
-    const returnUrl = `http://localhost:5000/api/public/checkout/webpay-return?pedidoId=${pedidoId}`;
+    // URL a la que Webpay redirigirá después del pago (soporta Railway y local automáticamente)
+    const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    const returnUrl = `${backendUrl}/api/public/checkout/webpay-return?pedidoId=${pedidoId}`;
 
     const wpResponse = await createTransaction(buyOrder, sessionId, amount, returnUrl);
 
@@ -128,7 +129,8 @@ router.all('/checkout/webpay-return', async (req, res) => {
           logger.warn(`Intento de cancelación bloqueado. Pedido ${verifiedPedidoId} en estado: ${orderToCheck ? orderToCheck.estado : 'inexistente'}`);
         }
       }
-      return res.redirect('http://localhost:3000/checkout?status=rejected');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/checkout?status=rejected`);
     }
 
     // 2. Confirmar transacción con Transbank
@@ -174,7 +176,8 @@ router.all('/checkout/webpay-return', async (req, res) => {
           .catch(err => logger.error(`Error enviando correo post-pago: ${err.message}`));
       }
 
-      return res.redirect('http://localhost:3000/checkout?status=success');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/checkout?status=success`);
     } else {
       // Registrar razones específicas del fallo de validación
       if (!isAuthorized) {
@@ -190,7 +193,8 @@ router.all('/checkout/webpay-return', async (req, res) => {
         await db.runAsync("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", [verifiedPedidoId]);
       }
       
-      return res.redirect('http://localhost:3000/checkout?status=rejected');
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/checkout?status=rejected`);
     }
   } catch (error) {
     logger.error('Error procesando el retorno de Webpay:', error);
@@ -205,7 +209,8 @@ router.all('/checkout/webpay-return', async (req, res) => {
     } catch (dbError) {
       logger.error('Error al actualizar pedido a cancelado tras excepción:', dbError);
     }
-    return res.redirect('http://localhost:3000/checkout?status=error');
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    return res.redirect(`${frontendUrl}/checkout?status=error`);
   }
 });
 

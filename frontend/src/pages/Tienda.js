@@ -17,6 +17,7 @@ import {
 import { Search as SearchIcon, ShoppingBasket as BasketIcon, AddShoppingCart as AddIcon } from '@mui/icons-material';
 import { useCart } from '../contexts/CartContext';
 import axios from 'axios';
+import { API_BASE_URL } from '../config/api';
 
 // GSAP Imports
 import gsap from 'gsap';
@@ -38,7 +39,7 @@ const Tienda = () => {
       try {
         setLoading(true);
         // Use public endpoint if available, otherwise fetch normally 
-        const response = await axios.get('/api/productos?limit=100');
+        const response = await axios.get(`${API_BASE_URL}/api/productos?limit=100`);
         setProductos(response.data.data || []);
       } catch (err) {
         console.error('Error fetching productos:', err);
@@ -159,7 +160,7 @@ const Tienda = () => {
                     alignItems: 'center',
                     justifyContent: 'center',
                     position: 'relative',
-                    backgroundImage: producto.imagen_url ? `url(${producto.imagen_url.startsWith('http') ? producto.imagen_url : `http://localhost:5000${producto.imagen_url}`})` : 'none',
+                    backgroundImage: producto.imagen_url ? `url(${producto.imagen_url.startsWith('http') ? producto.imagen_url : `${API_BASE_URL}${producto.imagen_url}`})` : 'none',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center'
                   }}
