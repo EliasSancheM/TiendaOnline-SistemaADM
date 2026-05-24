@@ -2,7 +2,8 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const logger = require('./logger');
 
-const DB_TYPE = (process.env.DB_TYPE || 'sqlite').toLowerCase();
+// Autodetectar PostgreSQL si DATABASE_URL existe en el entorno (característico de Railway/Heroku)
+const DB_TYPE = (process.env.DB_TYPE || (process.env.DATABASE_URL ? 'postgresql' : 'sqlite')).toLowerCase();
 
 let db;
 
@@ -10,7 +11,13 @@ let db;
 //  SQLite Adapter
 // ──────────────────────────────────────────────────
 function initSQLite() {
-  const sqlite3 = require('sqlite3').verbose();
+  let sqlite3;
+  try {
+    sqlite3 = require('sqlite3').verbose();
+  } catch (err) {
+    logger.error('❌ Error fatal: no se pudo cargar la librería nativa sqlite3 en este entorno:', err.message);
+    throw new Error('SQLite no está disponible en este sistema (falta la compilación nativa de C++). Si estás en Railway o producción, asegúrate de tener vinculada la base de datos PostgreSQL.');
+  }
   const dbPath = path.join(__dirname, '../../database/panaderia.db');
 
   const conn = new sqlite3.Database(dbPath, (err) => {
@@ -444,6 +451,16 @@ if (DB_TYPE === 'postgresql' || DB_TYPE === 'postgres') {
   logger.info('Usando base de datos PostgreSQL');
   db = initPostgreSQL();
 } else {
+  // Evitar cargar SQLite en entornos de producción en la nube para prevenir errores de GLIBC / dependencias nativas
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_STATIC_URL || process.env.RENDER) {
+    logger.error('❌ ERROR CRÍTICO DE CONFIGURACIÓN: Se detectó un entorno de producción o nube (Railway/Render) pero NO se ha configurado la variable de entorno DATABASE_URL ni DB_TYPE=postgresql.');
+    logger.error('👉 ACCIÓN REQUERIDA: Ingresa al panel de tu servicio en Railway, ve a la pestaña "Variables" y agrega:');
+    logger.error('   1. DB_TYPE = postgresql');
+    logger.error('   2. DATABASE_URL = ${{Postgres.DATABASE_URL}} (o el enlace de conexión de tu base de datos)');
+    logger.error('   3. PG_SSL = true');
+    throw new Error('Base de datos no configurada para producción. SQLite no está permitido en este entorno de nube.');
+  }
+
   logger.info('Usando base de datos SQLite');
   db = initSQLite();
 }
