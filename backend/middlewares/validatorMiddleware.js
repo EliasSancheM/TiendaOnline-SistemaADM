@@ -65,6 +65,45 @@ const facturaSchema = Joi.object({
   notas: Joi.string().max(500).allow('', null)
 });
 
+// Esquema de validación para el checkout público (tienda en línea)
+const publicCheckoutSchema = Joi.object({
+  cliente: Joi.object({
+    nombre: Joi.string().min(2).max(100).required()
+      .messages({ 'any.required': 'El nombre del cliente es obligatorio' }),
+    email: Joi.string().email().required()
+      .messages({ 
+        'any.required': 'El correo del cliente es obligatorio',
+        'string.email': 'El correo electrónico no es válido' 
+      }),
+    telefono: Joi.string().pattern(/^[0-9+\-\s()]+$/).max(20).required()
+      .messages({ 
+        'any.required': 'El teléfono del cliente es obligatorio',
+        'string.pattern.base': 'El formato de teléfono no es válido' 
+      }),
+    direccion: Joi.string().max(200).required()
+      .messages({ 'any.required': 'La dirección de entrega es obligatoria' })
+  }).required(),
+  items: Joi.array().items(
+    Joi.object({
+      id: Joi.number().integer().positive().required()
+        .messages({ 'any.required': 'El ID del producto es obligatorio' }),
+      quantity: Joi.number().integer().min(1).required()
+        .messages({ 
+          'any.required': 'La cantidad de producto es obligatoria',
+          'number.min': 'La cantidad mínima es 1' 
+        })
+    })
+  ).min(1).required()
+    .messages({ 
+      'any.required': 'Los productos del carrito son obligatorios',
+      'array.min': 'El carrito debe contener al menos un producto' 
+    }),
+  periodo: Joi.string().valid('mañana', 'tarde').required()
+    .messages({ 'any.only': 'El periodo debe ser "mañana" o "tarde"' }),
+  notas: Joi.string().max(500).allow('', null),
+  total: Joi.number().optional() // Se recalculará de forma segura en backend
+});
+
 /**
  * Middleware genérico de validación.
  * Uso: router.post('/', validate(pedidoSchema), handler)
@@ -89,5 +128,6 @@ module.exports = {
   pedidoSchema,
   facturaSchema,
   detallePedidoSchema,
+  publicCheckoutSchema,
   validate
 };

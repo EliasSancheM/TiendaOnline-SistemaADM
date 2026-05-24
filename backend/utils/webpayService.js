@@ -1,9 +1,14 @@
 const { WebpayPlus, Options, IntegrationApiKeys, Environment, IntegrationCommerceCodes } = require('transbank-sdk');
 
-// Usar entorno de integración (pruebas) por defecto.
-// Para producción, debes usar tus propias llaves y Environment.Production
+// Determinar el ambiente de Webpay Plus dinámicamente desde variables de entorno
+const commerceCode = process.env.WEBPAY_COMMERCE_CODE || IntegrationCommerceCodes.WEBPAY_PLUS;
+const apiKey = process.env.WEBPAY_API_KEY || IntegrationApiKeys.WEBPAY;
+const environment = (process.env.WEBPAY_ENVIRONMENT || '').toLowerCase() === 'production'
+  ? Environment.Production
+  : Environment.Integration;
+
 const tx = new WebpayPlus.Transaction(
-  new Options(IntegrationCommerceCodes.WEBPAY_PLUS, IntegrationApiKeys.WEBPAY, Environment.Integration)
+  new Options(commerceCode, apiKey, environment)
 );
 
 const createTransaction = async (buyOrder, sessionId, amount, returnUrl) => {

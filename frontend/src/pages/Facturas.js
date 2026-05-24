@@ -230,7 +230,7 @@ function Facturas() {
     // Calcular totales basados en pedidos seleccionados
     const pedidosSeleccionados = pedidos.filter(p => newSelectedPedidos.includes(p.id));
     const subtotal = pedidosSeleccionados.reduce((sum, p) => sum + (p.total || 0), 0);
-    const impuestos = subtotal * 0.21; // 21% IVA
+    const impuestos = subtotal * 0.19; // 19% IVA (Estándar Chile)
     const total = subtotal + impuestos;
     
     // Determinar cliente común (si todos los pedidos son del mismo cliente)
@@ -864,7 +864,7 @@ function Facturas() {
               <Grid item xs={12} sm={4}>
                 <TextField
                   name="impuestos"
-                  label="Impuestos (21%)"
+                  label="Impuestos (19%)"
                   type="number"
                   value={currentFactura.impuestos.toFixed(2)}
                   fullWidth
@@ -1012,7 +1012,7 @@ function Facturas() {
                     Subtotal: ${currentFactura.subtotal.toFixed(2)}
                   </Typography>
                   <Typography variant="body1">
-                    Impuestos (21%): ${currentFactura.impuestos.toFixed(2)}
+                    Impuestos (19%): ${currentFactura.impuestos.toFixed(2)}
                   </Typography>
                   <Typography variant="h6" color="primary">
                     Total: ${currentFactura.total.toFixed(2)}

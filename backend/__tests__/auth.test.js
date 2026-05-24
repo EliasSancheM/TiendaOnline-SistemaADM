@@ -16,34 +16,41 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 let app;
-let testDb;
+let mockDb;
 let testToken;
 let adminUserId;
 
 // Create a fresh in-memory database for tests
 beforeAll(async () => {
   // Create in-memory SQLite DB
-  testDb = new sqlite3.Database(':memory:');
+  mockDb = new sqlite3.Database(':memory:');
   
   // Promisify
-  testDb.allAsync = function(sql, params = []) {
+  mockDb.allAsync = function(sql, params = []) {
     return new Promise((resolve, reject) => {
       this.all(sql, params, (err, rows) => { if (err) reject(err); else resolve(rows); });
     });
   };
-  testDb.getAsync = function(sql, params = []) {
+  mockDb.getAsync = function(sql, params = []) {
     return new Promise((resolve, reject) => {
       this.get(sql, params, (err, row) => { if (err) reject(err); else resolve(row); });
     });
   };
-  testDb.runAsync = function(sql, params = []) {
+  mockDb.runAsync = function(sql, params = []) {
     return new Promise((resolve, reject) => {
       this.run(sql, params, function(err) { if (err) reject(err); else resolve({ lastID: this.lastID, changes: this.changes }); });
     });
   };
   
+  // Dialect helpers for testing compatibility
+  mockDb.helpers = {
+    now: () => 'CURRENT_TIMESTAMP',
+    date: (col) => `DATE(${col}, 'localtime')`,
+    groupConcat: (col) => `GROUP_CONCAT(${col})`
+  };
+  
   // Create tables
-  await testDb.runAsync(`CREATE TABLE IF NOT EXISTS usuarios (
+  await mockDb.runAsync(`CREATE TABLE IF NOT EXISTS usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
@@ -56,7 +63,7 @@ beforeAll(async () => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
-  await testDb.runAsync(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  await mockDb.runAsync(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     token TEXT UNIQUE NOT NULL,
@@ -67,14 +74,14 @@ beforeAll(async () => {
   
   // Create test admin user
   const hashedPassword = await bcrypt.hash('testpassword123', 10);
-  const result = await testDb.runAsync(
+  const result = await mockDb.runAsync(
     'INSERT INTO usuarios (username, password_hash, role, nombre_completo, email) VALUES (?, ?, ?, ?, ?)',
     ['testadmin', hashedPassword, 'admin', 'Test Admin', 'admin@test.com']
   );
   adminUserId = result.lastID;
   
-  // Mock the database module
-  jest.mock('../config/database', () => testDb);
+  // Mock the database module using the prefix 'mock'
+  jest.mock('../config/database', () => mockDb);
   
   // Mock email service
   jest.mock('../utils/emailService', () => ({
@@ -93,8 +100,8 @@ beforeAll(async () => {
 });
 
 afterAll((done) => {
-  if (testDb) {
-    testDb.close(() => done());
+  if (mockDb) {
+    mockDb.close(() => done());
   } else {
     done();
   }
