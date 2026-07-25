@@ -127,13 +127,16 @@ app.use('/api/public', publicRoutes);
 // ─── Producción: servir frontend desde el backend ──────────────────
 // En producción (Railway, Render, etc.) el backend sirve el build de React
 // para que todo funcione como una sola aplicación.
-if (process.env.NODE_ENV === 'production') {
+// En Vercel NO hace falta: la plataforma sirve el build estático del frontend
+// y esta función solo atiende /api/*. Solo aplica en Railway/Render/local.
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
   const frontendBuildPath = path.join(__dirname, '../frontend/build');
   app.use(express.static(frontendBuildPath));
 
-  // Catch-all: cualquier ruta que no sea /api/* devuelve index.html
-  // para que React Router maneje la navegación del lado del cliente
-  app.get('*', (req, res) => {
+  // Catch-all SPA. OJO: en Express 5 `app.get('*')` es inválido (path-to-regexp
+  // exige nombrar el comodín). Usamos un middleware, que no tiene ese problema.
+  app.use((req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
   });
 
