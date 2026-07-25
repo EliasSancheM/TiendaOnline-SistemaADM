@@ -156,40 +156,48 @@ verifyEmailConfig().then(result => {
   }
 });
 
-// Iniciar servidor
-const server = app.listen(PORT, '0.0.0.0', () => {
+// ─── Arranque tradicional (local / Railway / Render) ───────────────
+// En entornos serverless como Vercel NO se abre un puerto: la plataforma
+// invoca la app exportada por request. Por eso solo escuchamos cuando NO
+// estamos en Vercel.
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    const networkInterfaces = os.networkInterfaces();
+    let localIP = 'localhost';
 
-  const networkInterfaces = os.networkInterfaces();
-  let localIP = 'localhost';
-  
-  for (const interfaceName in networkInterfaces) {
-    const interfaces = networkInterfaces[interfaceName];
-    for (const iface of interfaces) {
-      if (iface.family === 'IPv4' && !iface.internal) {
-        localIP = iface.address;
-        break;
+    for (const interfaceName in networkInterfaces) {
+      const interfaces = networkInterfaces[interfaceName];
+      for (const iface of interfaces) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          localIP = iface.address;
+          break;
+        }
       }
+      if (localIP !== 'localhost') break;
     }
-    if (localIP !== 'localhost') break;
-  }
-  
-  console.log(`Servidor corriendo en:`);
-  console.log(`  - Local:   http://localhost:${PORT}`);
-  console.log(`  - Red:     http://${localIP}:${PORT}`);
-  console.log(`  - Acceso externo: Configura tu router para port forwarding`);
-  logger.info(`Servidor iniciado en puerto ${PORT} (0.0.0.0)`);
-});
 
-// Manejar el cierre de la aplicación
-process.on('SIGINT', () => {
-  if (typeof db.close === 'function') {
-    db.close((err) => {
-      if (err) console.error(err.message);
-      console.log('Base de datos cerrada');
+    console.log(`Servidor corriendo en:`);
+    console.log(`  - Local:   http://localhost:${PORT}`);
+    console.log(`  - Red:     http://${localIP}:${PORT}`);
+    console.log(`  - Acceso externo: Configura tu router para port forwarding`);
+    logger.info(`Servidor iniciado en puerto ${PORT} (0.0.0.0)`);
+  });
+
+  // Manejar el cierre de la aplicación
+  process.on('SIGINT', () => {
+    if (typeof db.close === 'function') {
+      db.close((err) => {
+        if (err) console.error(err.message);
+        console.log('Base de datos cerrada');
+        process.exit(0);
+      });
+    } else {
+      console.log('Servidor detenido');
       process.exit(0);
-    });
-  } else {
-    console.log('Servidor detenido');
-    process.exit(0);
-  }
-});
+    }
+    server.close();
+  });
+}
+
+// Exportar la app para el entorno serverless de Vercel (api/index.js)
+module.exports = app;

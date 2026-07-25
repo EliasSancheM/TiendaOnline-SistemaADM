@@ -19,7 +19,14 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { Badge } from '@mui/material';
 
+// GSAP
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
 import CartDrawer from './CartDrawer';
+
+gsap.registerPlugin(ScrollTrigger);
 
 const PublicNavbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -29,6 +36,29 @@ const PublicNavbar = () => {
   const location = useLocation();
   const { cartCount } = useCart();
   const [cartOpen, setCartOpen] = useState(false);
+  const navbarRef = React.useRef();
+
+  useGSAP(() => {
+    // Smart Navbar hide/show on scroll
+    const showAnim = gsap.from(navbarRef.current, { 
+      yPercent: -100,
+      paused: true,
+      duration: 0.4,
+      ease: "power3.out"
+    }).progress(1);
+
+    ScrollTrigger.create({
+      start: "top top",
+      end: 99999,
+      onUpdate: (self) => {
+        if (self.direction === -1) {
+          showAnim.play();
+        } else if (self.direction === 1 && self.scroll() > 100) {
+          showAnim.reverse();
+        }
+      }
+    });
+  }, []);
 
   const navItems = [
     { label: 'Inicio', path: '/' },
@@ -100,14 +130,16 @@ const PublicNavbar = () => {
 
   return (
     <AppBar 
+      ref={navbarRef}
       position="sticky" 
       elevation={0} 
       sx={{ 
         bgcolor: 'rgba(253, 251, 247, 0.95)', 
-        backdropFilter: 'blur(8px)',
+        backdropFilter: 'blur(10px)',
         borderBottom: '1px solid',
         borderColor: 'divider',
-        color: 'text.primary'
+        color: 'text.primary',
+        transition: 'background-color 0.3s ease',
       }}
     >
       <Container maxWidth="lg">

@@ -1,4 +1,5 @@
 const path = require('path');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const logger = require('./logger');
 
@@ -314,7 +315,8 @@ function createTables(conn) {
     // Create default admin user if none exists
     conn.get('SELECT COUNT(*) as count FROM usuarios WHERE role = "admin"', (err, row) => {
       if (!err && row.count === 0) {
-        const defaultPassword = 'panaderia2024';
+        // Generar contraseña aleatoria segura en lugar de una hardcodeada
+        const defaultPassword = crypto.randomBytes(12).toString('base64url');
         bcrypt.hash(defaultPassword, 12, (err, hash) => {
           if (!err) {
             conn.run(
@@ -322,8 +324,18 @@ function createTables(conn) {
               ['administrador', hash, 'admin', 'Administrador', 'admin@panaderia.com'],
               function (err) {
                 if (!err) {
-                  logger.info('Usuario administrador creado por defecto');
-                  logger.warn('⚠️ Cambia la contraseña del administrador después del primer login');
+                  logger.info('════════════════════════════════════════════════');
+                  logger.info('  USUARIO ADMINISTRADOR CREADO');
+                  logger.info(`  Usuario:    administrador`);
+                  logger.info(`  Contraseña: ${defaultPassword}`);
+                  logger.info('  ⚠️  GUARDA ESTA CONTRASEÑA, NO SE MOSTRARÁ DE NUEVO');
+                  logger.info('════════════════════════════════════════════════');
+                  console.log('\n════════════════════════════════════════════════');
+                  console.log('  USUARIO ADMINISTRADOR CREADO');
+                  console.log(`  Usuario:    administrador`);
+                  console.log(`  Contraseña: ${defaultPassword}`);
+                  console.log('  ⚠️  GUARDA ESTA CONTRASEÑA, NO SE MOSTRARÁ DE NUEVO');
+                  console.log('════════════════════════════════════════════════\n');
                 }
               }
             );
@@ -429,13 +441,25 @@ async function createTablesPostgreSQL(pool) {
     // Create default admin
     const adminCheck = await client.query("SELECT COUNT(*) as count FROM usuarios WHERE role = 'admin'");
     if (parseInt(adminCheck.rows[0].count) === 0) {
-      const hash = await bcrypt.hash('panaderia2024', 12);
+      // Generar contraseña aleatoria segura en lugar de una hardcodeada
+      const defaultPassword = crypto.randomBytes(12).toString('base64url');
+      const hash = await bcrypt.hash(defaultPassword, 12);
       await client.query(
         'INSERT INTO usuarios (username, password_hash, role, nombre_completo, email) VALUES ($1, $2, $3, $4, $5)',
         ['administrador', hash, 'admin', 'Administrador', 'admin@panaderia.com']
       );
-      logger.info('Usuario administrador creado por defecto (PostgreSQL)');
-      logger.warn('⚠️ Cambia la contraseña del administrador después del primer login');
+      logger.info('════════════════════════════════════════════════');
+      logger.info('  USUARIO ADMINISTRADOR CREADO (PostgreSQL)');
+      logger.info(`  Usuario:    administrador`);
+      logger.info(`  Contraseña: ${defaultPassword}`);
+      logger.info('  ⚠️  GUARDA ESTA CONTRASEÑA, NO SE MOSTRARÁ DE NUEVO');
+      logger.info('════════════════════════════════════════════════');
+      console.log('\n════════════════════════════════════════════════');
+      console.log('  USUARIO ADMINISTRADOR CREADO (PostgreSQL)');
+      console.log(`  Usuario:    administrador`);
+      console.log(`  Contraseña: ${defaultPassword}`);
+      console.log('  ⚠️  GUARDA ESTA CONTRASEÑA, NO SE MOSTRARÁ DE NUEVO');
+      console.log('════════════════════════════════════════════════\n');
     }
 
     logger.info('Tablas de PostgreSQL inicializadas correctamente');

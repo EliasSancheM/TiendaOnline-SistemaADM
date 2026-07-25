@@ -5,8 +5,10 @@ import { CssBaseline, Container, Box, Typography } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { es } from 'date-fns/locale';
-import { AuthProvider } from './contexts/AuthContext';
+import { CartProvider } from './contexts/CartContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import SmoothScroll from './components/SmoothScroll';
+import { AuthProvider } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
 
 // Componentes
@@ -27,7 +29,6 @@ import Nosotros from './pages/Nosotros';
 import Tienda from './pages/Tienda';
 import Checkout from './pages/Checkout';
 import PublicNavbar from './components/PublicNavbar';
-import { CartProvider } from './contexts/CartContext';
 
 // Tema personalizado — Design System Panadería
 const theme = createTheme({
@@ -152,25 +153,27 @@ const theme = createTheme({
 // Layout for public pages
 function PublicLayout() {
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <PublicNavbar />
-      <Box component="main" sx={{ flexGrow: 1 }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/nosotros" element={<Nosotros />} />
-          <Route path="/tienda" element={<Tienda />} />
-          <Route path="/checkout" element={<Checkout />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-        </Routes>
+    <SmoothScroll>
+      <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+        <PublicNavbar />
+        <Box component="main" sx={{ flexGrow: 1 }}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/nosotros" element={<Nosotros />} />
+            <Route path="/tienda" element={<Tienda />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+          </Routes>
+        </Box>
+        <Box sx={{ py: 4, textAlign: 'center', bgcolor: 'primary.dark', color: 'white' }}>
+          <Typography variant="body2">
+            © {new Date().getFullYear()} DondeLaEli — Panadería Artesanal. Todos los derechos reservados.
+          </Typography>
+        </Box>
       </Box>
-      <Box sx={{ py: 4, textAlign: 'center', bgcolor: 'primary.dark', color: 'white' }}>
-        <Typography variant="body2">
-          © 2024 DondeLaEli — Panadería Artesanal. Todos los derechos reservados.
-        </Typography>
-      </Box>
-    </Box>
+    </SmoothScroll>
   );
 }
 

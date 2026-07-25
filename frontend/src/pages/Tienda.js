@@ -69,15 +69,15 @@ const Tienda = () => {
     tl.from('.tienda-header > *', {
       y: -30,
       opacity: 0,
-      duration: 0.8,
-      stagger: 0.2,
-      ease: 'power3.out',
+      duration: 1.2,
+      stagger: 0.15,
+      ease: 'expo.out',
     })
     .from('.tienda-search', {
       scale: 0.9,
       opacity: 0,
-      duration: 0.5,
-      ease: 'back.out(1.5)',
+      duration: 1,
+      ease: 'expo.out',
     }, '-=0.4');
 
   }, { scope: containerRef }); // Usar scope permite ejecutar la animación al cargar
@@ -88,9 +88,9 @@ const Tienda = () => {
       gsap.from('.producto-card', {
         y: 40,
         opacity: 0,
-        duration: 0.6,
+        duration: 1.2,
         stagger: 0.1,
-        ease: 'power2.out',
+        ease: 'expo.out',
         clearProps: 'all' // Limpia las propiedades para que funcione bien el hover CSS
       });
     }
@@ -146,26 +146,43 @@ const Tienda = () => {
                 height: '100%', 
                 display: 'flex', 
                 flexDirection: 'column',
-                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
                 '&:hover': {
-                  transform: 'translateY(-8px)',
-                  boxShadow: '0 12px 30px rgba(61,43,31,0.12)',
+                  transform: 'translateY(-12px)',
+                  boxShadow: '0 20px 40px rgba(61,43,31,0.12)',
+                  '& .product-image': {
+                    transform: 'scale(1.08)',
+                  },
+                  '& .add-btn': {
+                    opacity: 1,
+                    transform: 'translateY(0)',
+                  }
                 }
               }}>
                 <Box 
                   sx={{ 
                     height: 200, 
-                    bgcolor: 'rgba(212, 163, 115, 0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    overflow: 'hidden',
                     position: 'relative',
-                    backgroundImage: producto.imagen_url ? `url(${producto.imagen_url.startsWith('http') ? producto.imagen_url : `${API_BASE_URL}${producto.imagen_url}`})` : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
                   }}
                 >
-                  {!producto.imagen_url && <BasketIcon sx={{ fontSize: 60, color: 'rgba(212, 163, 115, 0.3)' }} />}
+                  <Box 
+                    className="product-image"
+                    sx={{ 
+                      width: '100%',
+                      height: '100%',
+                      bgcolor: 'rgba(212, 163, 115, 0.1)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundImage: producto.imagen_url ? `url(${producto.imagen_url.startsWith('http') ? producto.imagen_url : `${API_BASE_URL}${producto.imagen_url}`})` : 'none',
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      transition: 'transform 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
+                    }}
+                  >
+                    {!producto.imagen_url && <BasketIcon sx={{ fontSize: 60, color: 'rgba(212, 163, 115, 0.3)' }} />}
+                  </Box>
                   <Box 
                     sx={{ 
                       position: 'absolute', 
@@ -192,6 +209,7 @@ const Tienda = () => {
                 </CardContent>
                 <Box sx={{ p: 2, pt: 0 }}>
                   <Button 
+                    className="add-btn"
                     fullWidth 
                     variant="outlined" 
                     onClick={() => handleAddToCart(producto)}
@@ -199,7 +217,10 @@ const Tienda = () => {
                     sx={{ 
                       borderRadius: 2,
                       textTransform: 'none',
-                      fontWeight: 600
+                      fontWeight: 600,
+                      opacity: { xs: 1, md: 0 },
+                      transform: { xs: 'none', md: 'translateY(15px)' },
+                      transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
                     }}
                   >
                     Añadir al pedido

@@ -28,6 +28,7 @@ const Home = () => {
   
   // Refs para las animaciones
   const heroRef = useRef();
+  const heroBgRef = useRef();
   const featuresRef = useRef();
   const aboutRef = useRef();
   const ctaRef = useRef();
@@ -36,11 +37,23 @@ const Home = () => {
     // 1. Animación del Hero (al cargar la página)
     const tlHero = gsap.timeline();
     tlHero.from('.hero-text > *', {
-      y: 50,
+      y: 60,
       opacity: 0,
-      duration: 1,
-      stagger: 0.2,
-      ease: 'power3.out',
+      duration: 1.5,
+      stagger: 0.15,
+      ease: 'expo.out',
+    });
+
+    // Parallax del Hero Background
+    gsap.to(heroBgRef.current, {
+      yPercent: 30,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: heroRef.current,
+        start: 'top top',
+        end: 'bottom top',
+        scrub: true
+      }
     });
 
     // 2. Animación de las características (Features) con ScrollTrigger
@@ -49,11 +62,11 @@ const Home = () => {
         trigger: featuresRef.current,
         start: 'top 80%',
       },
-      y: 50,
+      y: 60,
       opacity: 0,
-      duration: 0.8,
-      stagger: 0.2,
-      ease: 'back.out(1.7)',
+      duration: 1.2,
+      stagger: 0.15,
+      ease: 'expo.out',
     });
 
     // 3. Animación de la sección "Nosotros" (About) con ScrollTrigger
@@ -64,19 +77,22 @@ const Home = () => {
       }
     });
 
-    tlAbout.from('.about-image', {
-      x: -50,
-      opacity: 0,
-      duration: 1,
-      ease: 'power3.out',
+    tlAbout.fromTo('.about-image', {
+      clipPath: 'polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%)',
+      scale: 1.2
+    }, {
+      clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',
+      scale: 1,
+      duration: 1.5,
+      ease: 'expo.inOut',
     }, 0)
     .from('.about-text > *', {
-      x: 50,
+      y: 40,
       opacity: 0,
-      duration: 0.8,
-      stagger: 0.2,
-      ease: 'power3.out',
-    }, 0.2);
+      duration: 1.2,
+      stagger: 0.15,
+      ease: 'expo.out',
+    }, 0.5);
 
     // 4. Animación del Call to Action (CTA)
     gsap.from(ctaRef.current, {
@@ -84,10 +100,10 @@ const Home = () => {
         trigger: ctaRef.current,
         start: 'top 85%',
       },
-      scale: 0.9,
+      y: 50,
       opacity: 0,
-      duration: 0.8,
-      ease: 'power2.out',
+      duration: 1.2,
+      ease: 'expo.out',
     });
 
   }, []);
@@ -107,14 +123,15 @@ const Home = () => {
         }}
       >
         <Box
+          ref={heroBgRef}
           component="img"
           src="/pan_artesanal_hero.png" 
           sx={{
             position: 'absolute',
-            top: 0,
+            top: '-15%',
             left: 0,
             width: '100%',
-            height: '100%',
+            height: '130%', // Más alto para el parallax
             objectFit: 'cover',
             opacity: 0.5,
           }}
@@ -247,16 +264,18 @@ const Home = () => {
         <Container maxWidth="lg">
           <Grid container spacing={8} alignItems="center">
             <Grid item xs={12} md={6}>
-              <Box
-                className="about-image"
-                component="img"
-                src="/bakery_interior_about.png"
-                sx={{
-                  width: '100%',
-                  borderRadius: 8,
-                  boxShadow: '0 24px 48px rgba(61,43,31,0.15)',
-                }}
-              />
+              <Box sx={{ overflow: 'hidden', borderRadius: 8, boxShadow: '0 24px 48px rgba(61,43,31,0.15)' }}>
+                <Box
+                  className="about-image"
+                  component="img"
+                  src="/bakery_interior_about.png"
+                  sx={{
+                    width: '100%',
+                    display: 'block',
+                    transformOrigin: 'center',
+                  }}
+                />
+              </Box>
             </Grid>
             <Grid item xs={12} md={6} className="about-text">
               <Typography variant="h3" sx={{ mb: 4 }}>
