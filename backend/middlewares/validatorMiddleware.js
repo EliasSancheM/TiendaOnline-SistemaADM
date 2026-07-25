@@ -1,8 +1,28 @@
 const Joi = require('joi');
 
+// Política de contraseñas para altas y restablecimientos:
+// mínimo 8 caracteres con al menos una letra y un número.
+const strongPassword = Joi.string()
+  .min(8)
+  .max(128)
+  .pattern(/[A-Za-z]/, 'letra')
+  .pattern(/[0-9]/, 'número')
+  .required()
+  .messages({
+    'string.min': 'La contraseña debe tener al menos 8 caracteres',
+    'string.pattern.name': 'La contraseña debe incluir al menos una {#name}'
+  });
+
 const loginSchema = Joi.object({
   username: Joi.string().alphanum().min(3).max(30).required(),
-  password: Joi.string().min(6).required()
+  // En login solo validamos formato, no la política (no bloquear cuentas antiguas)
+  password: Joi.string().min(6).max(128).required()
+});
+
+// Restablecimiento de contraseña vía token de correo
+const resetPasswordSchema = Joi.object({
+  token: Joi.string().required(),
+  password: strongPassword
 });
 
 const clienteSchema = Joi.object({
@@ -23,7 +43,7 @@ const productoSchema = Joi.object({
 
 const registerSchema = Joi.object({
   username: Joi.string().alphanum().min(3).max(30).required(),
-  password: Joi.string().min(6).required(),
+  password: strongPassword,
   nombre_completo: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required()
 });
@@ -125,6 +145,7 @@ module.exports = {
   clienteSchema,
   productoSchema,
   registerSchema,
+  resetPasswordSchema,
   pedidoSchema,
   facturaSchema,
   detallePedidoSchema,

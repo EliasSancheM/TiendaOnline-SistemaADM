@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 const logger = require('../config/logger');
-const { loginSchema, registerSchema, validate } = require('../middlewares/validatorMiddleware');
+const { loginSchema, registerSchema, resetPasswordSchema, validate } = require('../middlewares/validatorMiddleware');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 const { sendWelcomeEmail, sendPasswordResetEmail } = require('../utils/emailService');
 const { addToken: blacklistToken } = require('../utils/tokenBlacklist');
@@ -230,18 +230,10 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // POST /api/auth/reset-password — Ejecutar restablecimiento
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', validate(resetPasswordSchema), async (req, res) => {
   try {
     const { token, password } = req.body;
-    
-    if (!token || !password) {
-      return res.status(400).json({ error: 'Token y nueva contraseña son requeridos' });
-    }
-    
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
-    }
-    
+
     // Find valid token
     const resetEntry = await db.getAsync(
       'SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0',

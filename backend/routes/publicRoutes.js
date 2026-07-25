@@ -112,8 +112,11 @@ router.all('/checkout/webpay-return', async (req, res) => {
   let verifiedPedidoId = null;
 
   try {
-    const token = req.query.token_ws || req.body.token_ws;
-    const urlPedidoId = req.query.pedidoId || req.body.pedidoId;
+    // El retorno de Transbank puede llegar por GET (query) o POST (form body).
+    // req.body puede ser undefined si el usuario anula sin enviar cuerpo.
+    const body = req.body || {};
+    const token = req.query.token_ws || body.token_ws;
+    const urlPedidoId = req.query.pedidoId || body.pedidoId;
     verifiedPedidoId = urlPedidoId ? parseInt(urlPedidoId) : null;
 
     // 1. Si no hay token, el usuario anuló la transacción o Transbank retornó sin token
