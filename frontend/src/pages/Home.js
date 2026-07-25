@@ -6,7 +6,6 @@ import {
   Button,
   Grid,
   Stack,
-  useTheme,
   IconButton,
 } from '@mui/material';
 import { Link } from 'react-router-dom';
@@ -24,8 +23,6 @@ import { useGSAP } from '@gsap/react';
 gsap.registerPlugin(ScrollTrigger);
 
 const Home = () => {
-  const theme = useTheme();
-  
   // Refs para las animaciones
   const heroRef = useRef();
   const heroBgRef = useRef();

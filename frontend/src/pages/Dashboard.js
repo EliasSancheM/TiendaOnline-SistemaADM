@@ -28,14 +28,13 @@ import {
   AttachMoney as MoneyIcon,
   Today as TodayIcon,
   Refresh as RefreshIcon,
-  Visibility as VisibilityIcon,
   Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from 'recharts';
 
 // GSAP Imports
