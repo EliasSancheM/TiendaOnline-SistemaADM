@@ -25,7 +25,7 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     const { username, password } = req.body;
     
     const user = await db.getAsync(
-      'SELECT * FROM usuarios WHERE username = ? AND activo = 1',
+      'SELECT * FROM usuarios WHERE username = ? AND activo = true',
       [username]
     );
     
@@ -105,7 +105,7 @@ router.post('/register', authenticateToken, authorizeRole(['admin']), validate(r
     // Crear nuevo usuario con rol 'empleado' por defecto
     const result = await db.runAsync(
       'INSERT INTO usuarios (username, password_hash, role, nombre_completo, email, activo) VALUES (?, ?, ?, ?, ?, ?)',
-      [username, hashedPassword, 'empleado', nombre_completo, email, 1]
+      [username, hashedPassword, 'empleado', nombre_completo, email, true]
     );
     
     const newUser = {
@@ -180,7 +180,7 @@ router.post('/forgot-password', async (req, res) => {
     
     // Find user by email
     const user = await db.getAsync(
-      'SELECT id, username, nombre_completo, email FROM usuarios WHERE email = ? AND activo = 1',
+      'SELECT id, username, nombre_completo, email FROM usuarios WHERE email = ? AND activo = true',
       [email]
     );
     
@@ -198,7 +198,7 @@ router.post('/forgot-password', async (req, res) => {
     
     // Invalidate any existing tokens for this user
     await db.runAsync(
-      'UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0',
+      'UPDATE password_reset_tokens SET used = true WHERE user_id = ? AND used = false',
       [user.id]
     );
     
@@ -236,7 +236,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
 
     // Find valid token
     const resetEntry = await db.getAsync(
-      'SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0',
+      'SELECT * FROM password_reset_tokens WHERE token = ? AND used = false',
       [token]
     );
     
@@ -246,7 +246,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     
     // Check expiry
     if (new Date(resetEntry.expires_at) < new Date()) {
-      await db.runAsync('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [resetEntry.id]);
+      await db.runAsync('UPDATE password_reset_tokens SET used = true WHERE id = ?', [resetEntry.id]);
       return res.status(400).json({ error: 'El token ha expirado. Solicita uno nuevo.' });
     }
     
@@ -260,7 +260,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     );
     
     // Mark token as used
-    await db.runAsync('UPDATE password_reset_tokens SET used = 1 WHERE id = ?', [resetEntry.id]);
+    await db.runAsync('UPDATE password_reset_tokens SET used = true WHERE id = ?', [resetEntry.id]);
     
     const user = await db.getAsync('SELECT username FROM usuarios WHERE id = ?', [resetEntry.user_id]);
     logger.info(`Contraseña restablecida para usuario: ${user?.username}`);
