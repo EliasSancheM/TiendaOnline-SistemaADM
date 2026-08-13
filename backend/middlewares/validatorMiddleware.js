@@ -66,7 +66,10 @@ const pedidoSchema = Joi.object({
     .messages({ 'string.pattern.base': 'La fecha debe tener formato YYYY-MM-DD' }),
   periodo: Joi.string().valid('mañana', 'tarde').required()
     .messages({ 'any.only': 'El periodo debe ser "mañana" o "tarde"' }),
-  estado: Joi.string().valid('pendiente', 'en_proceso', 'completado', 'cancelado').default('pendiente'),
+  // 'pendiente_pago' se acepta aquí para que un pedido de la tienda en línea no
+  // sea rechazado por el validador con un mensaje incomprensible: la máquina de
+  // estados (utils/estadosPedido.js) es la que decide, y explica el motivo.
+  estado: Joi.string().valid('pendiente_pago', 'pendiente', 'en_proceso', 'completado', 'cancelado').default('pendiente'),
   // `total` se omite adrede: se deriva de los detalles (ver detallePedidoSchema).
   notas: Joi.string().max(500).allow('', null),
   detalles: Joi.array().items(detallePedidoSchema).optional()

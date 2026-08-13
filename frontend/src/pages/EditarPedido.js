@@ -241,10 +241,18 @@ function EditarPedido() {
         total: calcularTotal(),
       };
 
-      await authenticatedFetch(`/api/pedidos/${id}`, {
+      const response = await authenticatedFetch(`/api/pedidos/${id}`, {
         method: 'PUT',
         body: JSON.stringify(pedidoActualizado)
       });
+
+      // El servidor puede rechazar la edición (p. ej. un pedido con el pago en
+      // curso o ya cancelado); sin esta comprobación se anunciaba éxito y se
+      // navegaba fuera aunque no se hubiera guardado nada.
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Error al actualizar el pedido');
+      }
 
       setSnackbar({
         open: true,
@@ -260,7 +268,7 @@ function EditarPedido() {
       console.error('Error al actualizar pedido:', error);
       setSnackbar({
         open: true,
-        message: 'Error al actualizar el pedido',
+        message: error.message || 'Error al actualizar el pedido',
         severity: 'error',
       });
     }

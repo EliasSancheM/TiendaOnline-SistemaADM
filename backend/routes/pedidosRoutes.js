@@ -4,6 +4,13 @@ const db = require('../config/database');
 const logger = require('../config/logger');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 const { pedidoSchema, validate } = require('../middlewares/validatorMiddleware');
+const { ESTADOS, validarTransicion } = require('../utils/estadosPedido');
+
+const conflicto = (mensaje) => {
+  const err = new Error(mensaje);
+  err.status = 409;
+  return err;
+};
 
 /**
  * Recalcula las líneas de un pedido con los precios reales del catálogo.
@@ -278,6 +285,23 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
 
   try {
     const total = await db.transaction(async (tx) => {
+      const actual = await tx.getAsync('SELECT estado FROM pedidos WHERE id = ?', [req.params.id]);
+      if (!actual) {
+        throw new Error('Pedido no encontrado');
+      }
+
+      // Editar un pedido mientras Webpay resuelve el cobro cambiaría el total
+      // que Transbank tiene reservado, y el callback rechazaría el pago por
+      // descuadre de monto. Se bloquea de forma explícita.
+      if (actual.estado === 'pendiente_pago') {
+        throw conflicto('El pedido tiene un pago en curso y no puede editarse desde el panel. Espera la respuesta de Webpay.');
+      }
+
+      const rechazo = validarTransicion(actual.estado, estado);
+      if (rechazo) {
+        throw conflicto(rechazo);
+      }
+
       let totalCalculado;
       const reemplazaDetalles = detalles && Array.isArray(detalles);
 
@@ -331,8 +355,8 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message });
     }
-    if (err.status === 400) {
-      return res.status(400).json({ error: err.message });
+    if (err.status === 400 || err.status === 409) {
+      return res.status(err.status).json({ error: err.message });
     }
     logger.error('Error actualizando pedido:', err);
     res.status(500).json({ error: 'Error al actualizar el pedido' });
@@ -342,21 +366,39 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
 // PATCH /api/pedidos/:id/estado — Actualizar solo el estado del pedido
 router.patch('/:id/estado', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   const { estado } = req.body;
-  if (!['pendiente', 'en_proceso', 'completado', 'cancelado'].includes(estado)) {
+  if (!ESTADOS.includes(estado)) {
     return res.status(400).json({ error: 'Estado no válido' });
   }
 
   try {
-    const result = await db.runAsync(
-      'UPDATE pedidos SET estado = ? WHERE id = ?',
-      [estado, req.params.id]
-    );
-
-    if (result.changes === 0) {
+    const pedido = await db.getAsync('SELECT estado FROM pedidos WHERE id = ?', [req.params.id]);
+    if (!pedido) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
-    logger.info(`Estado de pedido actualizado (ID: ${req.params.id} -> ${estado}) por usuario: ${req.user.username}`);
+    const rechazo = validarTransicion(pedido.estado, estado);
+    if (rechazo) {
+      logger.warn(
+        `Transición de estado rechazada (pedido ${req.params.id}: ${pedido.estado} -> ${estado}) ` +
+        `solicitada por usuario: ${req.user.username}`
+      );
+      return res.status(409).json({ error: rechazo });
+    }
+
+    // Condicionado al estado que acabamos de leer: si otra petición lo cambió
+    // entretanto, esta no lo pisa.
+    const result = await db.runAsync(
+      'UPDATE pedidos SET estado = ? WHERE id = ? AND estado = ?',
+      [estado, req.params.id, pedido.estado]
+    );
+
+    if (result.changes === 0) {
+      return res.status(409).json({
+        error: 'El pedido cambió de estado mientras se procesaba la solicitud. Recarga la página e intenta de nuevo.'
+      });
+    }
+
+    logger.info(`Estado de pedido actualizado (ID: ${req.params.id}: ${pedido.estado} -> ${estado}) por usuario: ${req.user.username}`);
     res.json({ message: 'Estado actualizado correctamente' });
   } catch (err) {
     logger.error('Error actualizando estado del pedido:', err);

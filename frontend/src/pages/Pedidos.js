@@ -188,7 +188,10 @@ function Pedidos() {
           method: 'PUT',
           body: JSON.stringify(pedidoToSave)
         });
-        if (!response.ok) throw new Error('Error al actualizar pedido');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Error al actualizar pedido');
+        }
         fetchPedidos();
 
         setSnackbar({
@@ -201,7 +204,10 @@ function Pedidos() {
           method: 'POST',
           body: JSON.stringify(pedidoToSave)
         });
-        if (!response.ok) throw new Error('Error al crear pedido');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Error al crear pedido');
+        }
         fetchPedidos();
 
         setSnackbar({
@@ -216,7 +222,7 @@ function Pedidos() {
       console.error('Error al guardar pedido:', error);
       setSnackbar({
         open: true,
-        message: 'Error al guardar el pedido',
+        message: error.message || 'Error al guardar el pedido',
         severity: 'error',
       });
     }
