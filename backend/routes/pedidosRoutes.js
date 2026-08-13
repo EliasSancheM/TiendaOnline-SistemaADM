@@ -5,6 +5,7 @@ const logger = require('../config/logger');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 const { pedidoSchema, validate } = require('../middlewares/validatorMiddleware');
 const { ESTADOS, validarTransicion } = require('../utils/estadosPedido');
+const { soloFecha, soloMes } = require('../utils/fechas');
 
 const conflicto = (mensaje) => {
   const err = new Error(mensaje);
@@ -176,8 +177,8 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
     }
 
     for (const p of pedidos) {
-      const pDate = p.fecha.substring(0, 10);
-      const pMonth = p.fecha.substring(0, 7);
+      const pDate = soloFecha(p.fecha);
+      const pMonth = soloMes(p.fecha);
       
       if (pDate >= sevenDaysStr) {
         if (weeklyMap[pDate] !== undefined) {

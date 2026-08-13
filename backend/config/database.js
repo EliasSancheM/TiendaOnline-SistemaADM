@@ -86,7 +86,14 @@ function initSQLite() {
 //  PostgreSQL Adapter
 // ──────────────────────────────────────────────────
 function initPostgreSQL() {
-  const { Pool } = require('pg');
+  const { Pool, types } = require('pg');
+
+  // Las columnas DATE llegan por defecto como objetos Date de JS, mientras que
+  // SQLite las devuelve como texto 'YYYY-MM-DD'. Esa diferencia entre motores
+  // rompía el dashboard en producción (`p.fecha.substring is not a function`) y
+  // enviaba al SII una fecha con hora incluida. Se conserva el texto crudo que
+  // manda PostgreSQL para que ambos motores devuelvan exactamente lo mismo.
+  types.setTypeParser(types.builtins.DATE, (valor) => valor);
 
   const poolConfig = process.env.DATABASE_URL
     ? { connectionString: process.env.DATABASE_URL }
@@ -306,7 +313,16 @@ function createTables(conn) {
       pedido_id INTEGER NOT NULL,
       FOREIGN KEY (factura_id) REFERENCES facturas (id) ON DELETE CASCADE,
       FOREIGN KEY (pedido_id) REFERENCES pedidos (id)
-    )`);
+    )`, () => {
+      // Un pedido solo puede estar en una factura. La regla ya se valida en
+      // routes/facturasRoutes.js; el índice es la red de seguridad en la BD.
+      conn.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_factura_pedidos_pedido ON factura_pedidos(pedido_id)`, (err) => {
+        if (err) {
+          logger.warn(`No se pudo crear el índice único de factura_pedidos: ${err.message}`);
+          logger.warn('Probablemente ya existan pedidos facturados más de una vez. Revísalos y vuelve a arrancar.');
+        }
+      });
+    });
 
     // Password reset tokens table
     conn.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -435,6 +451,13 @@ async function createTablesPostgreSQL(pool) {
       factura_id INTEGER NOT NULL REFERENCES facturas(id) ON DELETE CASCADE,
       pedido_id INTEGER NOT NULL REFERENCES pedidos(id)
     )`);
+    // Un pedido solo puede estar en una factura (ver routes/facturasRoutes.js).
+    try {
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_factura_pedidos_pedido ON factura_pedidos(pedido_id)`);
+    } catch (err) {
+      logger.warn(`No se pudo crear el índice único de factura_pedidos: ${err.message}`);
+      logger.warn('Probablemente ya existan pedidos facturados más de una vez. Revísalos y vuelve a arrancar.');
+    }
 
     await client.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id SERIAL PRIMARY KEY,

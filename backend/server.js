@@ -23,6 +23,20 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 ||
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ─── Confianza en el proxy ─────────────────────────────────────────
+// Detrás de Vercel/Railway/Render la IP real del cliente viaja en
+// X-Forwarded-For. Sin esto, req.ip es siempre la del proxy y el rate-limiter
+// mete a TODOS los usuarios en el mismo cupo: 10 intentos de login por IP se
+// convierten en 10 para el mundo entero.
+// Se activa solo si sabemos que hay un proxy delante. Confiar en la cabecera
+// sin proxy permitiría falsear la IP y esquivar el límite a voluntad.
+const detrasDeProxy = process.env.TRUST_PROXY || process.env.VERCEL ||
+  process.env.RAILWAY_STATIC_URL || process.env.RENDER;
+if (detrasDeProxy) {
+  app.set('trust proxy', 1);
+  logger.info('trust proxy activado: la IP del cliente se toma de X-Forwarded-For');
+}
+
 // Rate limiting general para toda la API
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 900000,
