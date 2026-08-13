@@ -6,6 +6,74 @@ const { authenticateToken, authorizeRole } = require('../middlewares/authMiddlew
 const { facturaSchema, validate } = require('../middlewares/validatorMiddleware');
 const billingService = require('../services/billingService');
 
+const TASA_IVA = 0.19; // IVA Chile
+
+const redondear = (n) => Math.round(n * 100) / 100;
+
+const errorDeDatos = (mensaje) => {
+  const err = new Error(mensaje);
+  err.status = 400;
+  return err;
+};
+
+/**
+ * Calcula los importes de una factura a partir de los pedidos que agrupa.
+ *
+ * subtotal/impuestos/total del body se ignoran: en el panel son campos de solo
+ * lectura derivados de los pedidos seleccionados (ver Facturas.js), así que el
+ * servidor los reconstruye igual. Sin esto, cualquiera con rol contador podía
+ * emitir una factura por $0 sobre pedidos por cualquier monto.
+ *
+ * De paso valida lo que el recálculo da por supuesto: que los pedidos existan,
+ * que sean del mismo cliente que la factura y que no estén ya facturados.
+ *
+ * @param {number|null} facturaIdActual al editar, la factura que se excluye del
+ *        control de duplicados (sus propios pedidos no son "de otra factura")
+ */
+async function calcularImportes(pedidosIds, clienteId, ejecutor, facturaIdActual = null) {
+  if (!pedidosIds || pedidosIds.length === 0) {
+    return { subtotal: 0, impuestos: 0, total: 0 };
+  }
+
+  const ids = [...new Set(pedidosIds)];
+  const placeholders = ids.map(() => '?').join(',');
+
+  const pedidos = await ejecutor.allAsync(
+    `SELECT id, cliente_id, total FROM pedidos WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  if (pedidos.length !== ids.length) {
+    const encontrados = new Set(pedidos.map(p => p.id));
+    const faltantes = ids.filter(id => !encontrados.has(id));
+    throw errorDeDatos(`No existe el pedido ${faltantes.join(', ')}`);
+  }
+
+  const ajenos = pedidos.filter(p => p.cliente_id !== clienteId);
+  if (ajenos.length > 0) {
+    throw errorDeDatos(
+      `El pedido ${ajenos.map(p => p.id).join(', ')} pertenece a otro cliente y no puede incluirse en esta factura`
+    );
+  }
+
+  let sqlDuplicados = `SELECT pedido_id FROM factura_pedidos WHERE pedido_id IN (${placeholders})`;
+  const paramsDuplicados = [...ids];
+  if (facturaIdActual !== null && facturaIdActual !== undefined) {
+    sqlDuplicados += ' AND factura_id <> ?';
+    paramsDuplicados.push(facturaIdActual);
+  }
+  const yaFacturados = await ejecutor.allAsync(sqlDuplicados, paramsDuplicados);
+  if (yaFacturados.length > 0) {
+    const repetidos = [...new Set(yaFacturados.map(f => f.pedido_id))];
+    throw errorDeDatos(`El pedido ${repetidos.join(', ')} ya está incluido en otra factura`);
+  }
+
+  const subtotal = redondear(pedidos.reduce((suma, p) => suma + (p.total || 0), 0));
+  const impuestos = redondear(subtotal * TASA_IVA);
+
+  return { subtotal, impuestos, total: redondear(subtotal + impuestos) };
+}
+
 // GET /api/facturas/pedidos-disponibles — Obtener pedidos no facturados
 router.get('/pedidos-disponibles', authenticateToken, authorizeRole(['admin', 'contador']), async (req, res) => {
   try {
@@ -39,6 +107,21 @@ router.get('/pedidos-disponibles', authenticateToken, authorizeRole(['admin', 'c
   } catch (err) {
     logger.error('Error obteniendo pedidos para facturación:', err);
     res.status(500).json({ error: 'Error al obtener pedidos disponibles' });
+  }
+});
+
+// GET /api/facturas/clientes-facturables — Clientes para el selector de facturación
+// Alternativa acotada a GET /api/clientes para el rol contador: devuelve solo los
+// campos que se imprimen en un DTE. Deliberadamente NO incluye email ni teléfono.
+router.get('/clientes-facturables', authenticateToken, authorizeRole(['admin', 'contador']), async (req, res) => {
+  try {
+    const rows = await db.allAsync(
+      'SELECT id, nombre, rut, giro, direccion FROM clientes ORDER BY nombre'
+    );
+    res.json(rows);
+  } catch (err) {
+    logger.error('Error obteniendo clientes facturables:', err);
+    res.status(500).json({ error: 'Error al obtener los clientes' });
   }
 });
 
@@ -110,28 +193,33 @@ router.get('/reporte', authenticateToken, authorizeRole(['admin', 'contador']), 
     const currentAnio = anio || new Date().getFullYear();
     const currentMes = mes || (new Date().getMonth() + 1);
 
-    // Formatear mes con zero-padding para SQLite
+    // Rango [primer día del mes, primer día del mes siguiente).
+    // No se usa `fecha LIKE '2026-08-%'`: en PostgreSQL `fecha` es DATE y no
+    // existe el operador date ~~ text, así que la consulta abortaba. La
+    // comparación por rango funciona igual en ambos motores.
     const mesFormatted = String(currentMes).padStart(2, '0');
-    const pattern = `${currentAnio}-${mesFormatted}-%`;
+    const desde = `${currentAnio}-${mesFormatted}-01`;
+    const siguienteMes = new Date(Number(currentAnio), Number(currentMes), 1);
+    const hasta = `${siguienteMes.getFullYear()}-${String(siguienteMes.getMonth() + 1).padStart(2, '0')}-01`;
 
     const stats = await db.getAsync(
-      `SELECT 
+      `SELECT
         COUNT(*) as total_documentos,
         SUM(subtotal) as neto,
         SUM(impuestos) as iva,
         SUM(total) as total,
         SUM(CASE WHEN estado = 'pagada' THEN total ELSE 0 END) as recaudado
-       FROM facturas 
-       WHERE fecha LIKE ?`,
-      [pattern]
+       FROM facturas
+       WHERE fecha >= ? AND fecha < ?`,
+      [desde, hasta]
     );
 
     const porEstado = await db.allAsync(
-      `SELECT estado, COUNT(*) as cantidad, SUM(total) as monto 
-       FROM facturas 
-       WHERE fecha LIKE ? 
+      `SELECT estado, COUNT(*) as cantidad, SUM(total) as monto
+       FROM facturas
+       WHERE fecha >= ? AND fecha < ?
        GROUP BY estado`,
-      [pattern]
+      [desde, hasta]
     );
 
     res.json({
@@ -179,14 +267,16 @@ router.get('/:id', authenticateToken, authorizeRole(['admin', 'contador']), asyn
 
 // POST /api/facturas — Crear factura con relaciones a pedidos (transacción)
 router.post('/', authenticateToken, authorizeRole(['admin', 'contador']), validate(facturaSchema), async (req, res) => {
-  const { cliente_id, pedidos_ids, numero_factura, fecha, subtotal, impuestos, total, estado, notas } = req.body;
+  const { cliente_id, pedidos_ids, numero_factura, fecha, estado, notas } = req.body;
 
   try {
-    const facturaId = await db.transaction(async (tx) => {
+    const { facturaId, importes } = await db.transaction(async (tx) => {
+      const calculado = await calcularImportes(pedidos_ids, cliente_id, tx);
+
       const result = await tx.runAsync(
-        `INSERT INTO facturas (cliente_id, numero_factura, fecha, subtotal, impuestos, total, estado, notas) 
+        `INSERT INTO facturas (cliente_id, numero_factura, fecha, subtotal, impuestos, total, estado, notas)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [cliente_id, numero_factura, fecha, subtotal, impuestos, total, estado, notas]
+        [cliente_id, numero_factura, fecha, calculado.subtotal, calculado.impuestos, calculado.total, estado, notas]
       );
       const id = result.lastID;
 
@@ -199,15 +289,19 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'contador']), valida
           );
         }
       }
-      return id;
+      return { facturaId: id, importes: calculado };
     });
 
-    logger.info(`Factura creada (ID: ${facturaId}, Nro: ${numero_factura}) por usuario: ${req.user.username}`);
+    logger.info(`Factura creada (ID: ${facturaId}, Nro: ${numero_factura}, total recalculado: ${importes.total}) por usuario: ${req.user.username}`);
     res.status(201).json({
       id: facturaId,
+      ...importes,
       message: 'Factura creada correctamente'
     });
   } catch (err) {
+    if (err.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     if (err.message && (err.message.includes('UNIQUE constraint failed') || err.message.includes('duplicate key value'))) {
       return res.status(400).json({ error: 'El número de factura ya existe' });
     }
@@ -219,17 +313,20 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'contador']), valida
 // PUT /api/facturas/:id — Actualizar factura (transacción)
 router.put('/:id', authenticateToken, authorizeRole(['admin', 'contador']), validate(facturaSchema), async (req, res) => {
   const { id } = req.params;
-  const { cliente_id, pedidos_ids, numero_factura, fecha, subtotal, impuestos, total, estado, notas } = req.body;
+  const { cliente_id, pedidos_ids, numero_factura, fecha, estado, notas } = req.body;
 
   try {
     await db.transaction(async (tx) => {
+      // Los pedidos que ya son de esta factura no cuentan como duplicados.
+      const calculado = await calcularImportes(pedidos_ids, cliente_id, tx, id);
+
       const updateResult = await tx.runAsync(
         `UPDATE facturas SET
           cliente_id = ?, numero_factura = ?, fecha = ?,
           subtotal = ?, impuestos = ?, total = ?, estado = ?, notas = ?,
           updated_at = ${tx.helpers.now()}
         WHERE id = ?`,
-        [cliente_id, numero_factura, fecha, subtotal, impuestos, total, estado, notas, id]
+        [cliente_id, numero_factura, fecha, calculado.subtotal, calculado.impuestos, calculado.total, estado, notas, id]
       );
 
       if (updateResult.changes === 0) {
@@ -255,11 +352,14 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'contador']), vali
     if (err.message === 'Factura no encontrada') {
       return res.status(404).json({ error: err.message });
     }
+    if (err.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     if (err.message && (err.message.includes('UNIQUE constraint failed') || err.message.includes('duplicate key value'))) {
       return res.status(400).json({ error: 'El número de factura ya existe' });
     }
     logger.error('Error actualizando factura:', err);
-    res.status(500).json({ error: 'Error al actualizar the factura' });
+    res.status(500).json({ error: 'Error al actualizar la factura' });
   }
 });
 

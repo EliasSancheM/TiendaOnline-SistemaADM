@@ -5,8 +5,59 @@ const logger = require('../config/logger');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 const { pedidoSchema, validate } = require('../middlewares/validatorMiddleware');
 
+/**
+ * Recalcula las líneas de un pedido con los precios reales del catálogo.
+ *
+ * Los campos precio_unitario, subtotal y total que llegan en el body se
+ * ignoran por completo: el panel los deriva del catálogo (ver NuevoPedido.js /
+ * EditarPedido.js), así que aquí se reconstruyen igual y nadie puede fijar
+ * importes arbitrarios llamando a la API directamente. Es la misma garantía
+ * que ya aplicaba el checkout público.
+ *
+ * @param {Array} detalles líneas validadas por Joi (producto_id, cantidad)
+ * @param {Object} ejecutor conexión o transacción sobre la que consultar
+ * @returns {Promise<{detalles: Array, total: number}>}
+ * @throws {Error} con .status = 400 si algún producto no existe
+ */
+async function recalcularImportes(detalles, ejecutor) {
+  if (!detalles || detalles.length === 0) {
+    return { detalles: [], total: 0 };
+  }
+
+  const ids = [...new Set(detalles.map(d => d.producto_id))];
+  const placeholders = ids.map(() => '?').join(',');
+  const productos = await ejecutor.allAsync(
+    `SELECT id, precio FROM productos WHERE id IN (${placeholders})`,
+    ids
+  );
+
+  const precios = new Map(productos.map(p => [p.id, p.precio]));
+
+  const lineas = detalles.map(d => {
+    const precio = precios.get(d.producto_id);
+    if (precio === undefined) {
+      const err = new Error(`El producto con ID ${d.producto_id} no existe en el catálogo`);
+      err.status = 400;
+      throw err;
+    }
+    return {
+      producto_id: d.producto_id,
+      cantidad: d.cantidad,
+      precio_unitario: precio,
+      subtotal: precio * d.cantidad
+    };
+  });
+
+  return {
+    detalles: lineas,
+    total: lineas.reduce((suma, l) => suma + l.subtotal, 0)
+  };
+}
+
 // GET /api/pedidos — Listar pedidos con filtros y paginación
-router.get('/', authenticateToken, async (req, res) => {
+// Solo admin y empleado (operación diaria). El contador no factura desde aquí:
+// usa GET /api/facturas/pedidos-disponibles, que ya filtra lo no facturado.
+router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
     const { fecha, periodo, page = 1, limit = 50 } = req.query;
     const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
@@ -148,7 +199,7 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
 });
 
 // GET /api/pedidos/:id — Detalle de un pedido con sus líneas
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
     const pedido = await db.getAsync(
       `SELECT p.*, c.nombre as cliente_nombre 
@@ -180,38 +231,42 @@ router.get('/:id', authenticateToken, async (req, res) => {
  
 // POST /api/pedidos — Crear pedido con detalles (transacción)
 router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), validate(pedidoSchema), async (req, res) => {
-  const { cliente_id, fecha, periodo, estado, total, notas, detalles } = req.body;
- 
+  const { cliente_id, fecha, periodo, estado, notas, detalles } = req.body;
+
   try {
-    const pedidoId = await db.transaction(async (tx) => {
+    const { pedidoId, total } = await db.transaction(async (tx) => {
+      // El total del body se descarta: manda el catálogo.
+      const importes = await recalcularImportes(detalles, tx);
+
       const result = await tx.runAsync(
         'INSERT INTO pedidos (cliente_id, fecha, periodo, estado, total, notas) VALUES (?, ?, ?, ?, ?, ?)',
-        [cliente_id, fecha, periodo, estado || 'pendiente', total || 0, notas]
+        [cliente_id, fecha, periodo, estado || 'pendiente', importes.total, notas]
       );
       const id = result.lastID;
- 
-      if (detalles && detalles.length > 0) {
-        for (const detalle of detalles) {
-          await tx.runAsync(
-            'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)',
-            [id, detalle.producto_id, detalle.cantidad, detalle.precio_unitario, detalle.subtotal]
-          );
-        }
+
+      for (const linea of importes.detalles) {
+        await tx.runAsync(
+          'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)',
+          [id, linea.producto_id, linea.cantidad, linea.precio_unitario, linea.subtotal]
+        );
       }
-      return id;
+      return { pedidoId: id, total: importes.total };
     });
- 
-    logger.info(`Pedido creado (ID: ${pedidoId}) por usuario: ${req.user.username}`);
+
+    logger.info(`Pedido creado (ID: ${pedidoId}, total recalculado: ${total}) por usuario: ${req.user.username}`);
     res.status(201).json({
       id: pedidoId,
       cliente_id,
       fecha,
       periodo,
       estado: estado || 'pendiente',
-      total: total || 0,
+      total,
       notas,
     });
   } catch (err) {
+    if (err.status === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     logger.error('Error creando pedido:', err);
     res.status(500).json({ error: 'Error al crear el pedido' });
   }
@@ -219,33 +274,50 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), valida
 
 // PUT /api/pedidos/:id — Actualizar pedido y sus detalles (transacción)
 router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), validate(pedidoSchema), async (req, res) => {
-  const { cliente_id, fecha, periodo, estado, total, notas, detalles } = req.body;
+  const { cliente_id, fecha, periodo, estado, notas, detalles } = req.body;
 
   try {
-    await db.transaction(async (tx) => {
+    const total = await db.transaction(async (tx) => {
+      let totalCalculado;
+      const reemplazaDetalles = detalles && Array.isArray(detalles);
+
+      if (reemplazaDetalles) {
+        // Se envían líneas nuevas: se revalorizan con el catálogo actual.
+        const importes = await recalcularImportes(detalles, tx);
+        totalCalculado = importes.total;
+
+        await tx.runAsync('DELETE FROM detalles_pedido WHERE pedido_id = ?', [req.params.id]);
+        for (const linea of importes.detalles) {
+          await tx.runAsync(
+            'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)',
+            [req.params.id, linea.producto_id, linea.cantidad, linea.precio_unitario, linea.subtotal]
+          );
+        }
+      } else {
+        // No se tocan las líneas (p. ej. editar solo las notas): el total sale
+        // de los subtotales ya guardados, no del body. Así no se revaloriza un
+        // pedido histórico por un cambio de precio posterior, y el cliente
+        // tampoco puede imponer un total.
+        const fila = await tx.getAsync(
+          'SELECT SUM(subtotal) as total FROM detalles_pedido WHERE pedido_id = ?',
+          [req.params.id]
+        );
+        totalCalculado = (fila && fila.total) || 0;
+      }
+
       const updateResult = await tx.runAsync(
         'UPDATE pedidos SET cliente_id = ?, fecha = ?, periodo = ?, estado = ?, total = ?, notas = ? WHERE id = ?',
-        [cliente_id, fecha, periodo, estado, total, notas, req.params.id]
+        [cliente_id, fecha, periodo, estado, totalCalculado, notas, req.params.id]
       );
 
       if (updateResult.changes === 0) {
         throw new Error('Pedido no encontrado');
       }
 
-      // Si se proporcionan detalles, reemplazar todos
-      if (detalles && Array.isArray(detalles)) {
-        await tx.runAsync('DELETE FROM detalles_pedido WHERE pedido_id = ?', [req.params.id]);
-
-        for (const detalle of detalles) {
-          await tx.runAsync(
-            'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)',
-            [req.params.id, detalle.producto_id, detalle.cantidad, detalle.precio_unitario, detalle.subtotal]
-          );
-        }
-      }
+      return totalCalculado;
     });
 
-    logger.info(`Pedido actualizado (ID: ${req.params.id}) por usuario: ${req.user.username}`);
+    logger.info(`Pedido actualizado (ID: ${req.params.id}, total recalculado: ${total}) por usuario: ${req.user.username}`);
     res.json({
       id: req.params.id,
       cliente_id,
@@ -258,6 +330,9 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
   } catch (err) {
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message });
+    }
+    if (err.status === 400) {
+      return res.status(400).json({ error: err.message });
     }
     logger.error('Error actualizando pedido:', err);
     res.status(500).json({ error: 'Error al actualizar el pedido' });

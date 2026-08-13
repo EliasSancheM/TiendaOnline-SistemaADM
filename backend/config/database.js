@@ -227,8 +227,15 @@ function createTables(conn) {
       telefono TEXT,
       direccion TEXT,
       email TEXT,
+      rut TEXT,
+      giro TEXT,
       fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    )`, () => {
+      // Bases de datos creadas antes de que existieran estas columnas: el error
+      // "duplicate column name" es esperado y se ignora (mismo patrón que imagen_url).
+      conn.run(`ALTER TABLE clientes ADD COLUMN rut TEXT`, () => {});
+      conn.run(`ALTER TABLE clientes ADD COLUMN giro TEXT`, () => {});
+    });
 
     conn.run(`CREATE TABLE IF NOT EXISTS pedidos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

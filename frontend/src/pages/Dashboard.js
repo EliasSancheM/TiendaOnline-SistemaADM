@@ -29,6 +29,7 @@ import {
   Today as TodayIcon,
   Refresh as RefreshIcon,
   Schedule as ScheduleIcon,
+  Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -43,7 +44,7 @@ import { useGSAP } from '@gsap/react';
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { authenticatedFetch } = useAuth();
+  const { authenticatedFetch, isContador } = useAuth();
   const [stats, setStats] = useState({
     clientes: 0,
     pedidosHoy: 0,
@@ -55,6 +56,14 @@ function Dashboard() {
     pedidosCompletados: 0,
   });
   const [pedidosRecientes, setPedidosRecientes] = useState([]);
+  // Resumen de facturación del mes (solo se carga para el rol contador)
+  const [reporte, setReporte] = useState({
+    total_documentos: 0,
+    neto: 0,
+    iva: 0,
+    total: 0,
+    recaudado: 0,
+  });
   const [productosPopulares, setProductosPopulares] = useState([]);
   const [ventasSemanales, setVentasSemanales] = useState([]);
   const [ventasMensuales, setVentasMensuales] = useState([]);
@@ -70,7 +79,35 @@ function Dashboard() {
       setError(null);
       
       const today = new Date().toISOString().split('T')[0];
-      
+
+      // El contador no tiene acceso a /api/clientes ni /api/pedidos: contienen
+      // datos personales y operación diaria que no le corresponden. Su tablero
+      // se arma con las estadísticas agregadas (abiertas a los tres roles) y el
+      // resumen de facturación del mes.
+      if (isContador) {
+        const [statsRes, reporteRes] = await Promise.all([
+          authenticatedFetch('/api/pedidos/dashboard-stats'),
+          authenticatedFetch('/api/facturas/reporte')
+        ]);
+
+        const statsJson = await statsRes.json();
+        const reporteJson = await reporteRes.json();
+        const r = reporteJson.stats || {};
+
+        setReporte({
+          total_documentos: r.total_documentos || 0,
+          neto: r.neto || 0,
+          iva: r.iva || 0,
+          total: r.total || 0,
+          recaudado: r.recaudado || 0,
+        });
+        setProductosPopulares(statsJson.productosPopulares || []);
+        setVentasSemanales(statsJson.ventasSemanales || []);
+        setVentasMensuales(statsJson.ventasMensuales || []);
+        setLastUpdate(new Date());
+        return;
+      }
+
       // Obtener datos básicos (limit=200 para estadísticas)
       const [clientesRes, pedidosHoyRes, todosPedidosRes, statsRes] = await Promise.all([
         authenticatedFetch('/api/clientes?limit=200'),
@@ -127,7 +164,7 @@ function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedFetch]);
+  }, [authenticatedFetch, isContador]);
 
   useEffect(() => {
     fetchData();
@@ -169,7 +206,7 @@ function Dashboard() {
     }
   }, [loading]);
 
-  const cards = [
+  const cardsOperacion = [
     {
       title: 'Total Clientes',
       value: stats.clientes,
@@ -225,6 +262,67 @@ function Dashboard() {
       iconBg: 'linear-gradient(135deg, #5A8A5A, #7DAF7D)',
     },
   ];
+
+  // Tablero del contador: facturación del mes en curso, sin datos de clientes
+  // ni de la operación diaria.
+  const cardsFacturacion = [
+    {
+      title: 'Documentos del Mes',
+      value: reporte.total_documentos,
+      icon: <ReceiptIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#D4A373',
+      bgColor: '#FDF5EC',
+      iconBg: 'linear-gradient(135deg, #D4A373, #E8C9A5)',
+    },
+    {
+      title: 'Neto Facturado',
+      value: `$${Math.round(reporte.neto).toLocaleString()}`,
+      icon: <MoneyIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#B8884D',
+      bgColor: '#FFF8EC',
+      iconBg: 'linear-gradient(135deg, #B8884D, #D4A373)',
+    },
+    {
+      title: 'IVA',
+      value: `$${Math.round(reporte.iva).toLocaleString()}`,
+      icon: <ReceiptIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#7D8FAF',
+      bgColor: '#EEF1F6',
+      iconBg: 'linear-gradient(135deg, #7D8FAF, #A3B1C9)',
+    },
+    {
+      title: 'Total Facturado',
+      value: `$${Math.round(reporte.total).toLocaleString()}`,
+      icon: <TrendingUpIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#A26769',
+      bgColor: '#F8F0F0',
+      iconBg: 'linear-gradient(135deg, #A26769, #C08F91)',
+    },
+    {
+      title: 'Recaudado',
+      value: `$${Math.round(reporte.recaudado).toLocaleString()}`,
+      icon: <MoneyIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#5A8A5A',
+      bgColor: '#EBF4EB',
+      iconBg: 'linear-gradient(135deg, #5A8A5A, #7DAF7D)',
+    },
+    {
+      title: 'Por Cobrar',
+      value: `$${Math.round(Math.max(0, reporte.total - reporte.recaudado)).toLocaleString()}`,
+      icon: <ScheduleIcon fontSize="large" />,
+      action: () => navigate('/admin/facturas'),
+      color: '#C17A3A',
+      bgColor: '#FDF5EC',
+      iconBg: 'linear-gradient(135deg, #C17A3A, #D4A373)',
+    },
+  ];
+
+  const cards = isContador ? cardsFacturacion : cardsOperacion;
 
   if (loading) {
     return (
@@ -346,6 +444,9 @@ function Dashboard() {
         ))}
       </Grid>
 
+      {/* Operación diaria: no aplica al contador, que además no tiene acceso
+          a /api/pedidos en el backend. */}
+      {!isContador && (
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6} className="dash-section">
           <Paper sx={{ p: 3, height: '100%' }}>
@@ -475,6 +576,7 @@ function Dashboard() {
           </Paper>
         </Grid>
       </Grid>
+      )}
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6} className="dash-section">

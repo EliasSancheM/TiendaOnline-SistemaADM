@@ -6,7 +6,10 @@ const { clienteSchema, validate } = require('../middlewares/validatorMiddleware'
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 
 // GET /api/clientes — Listar clientes con paginación
-router.get('/', authenticateToken, async (req, res) => {
+// Solo admin y empleado: expone datos personales completos (email, teléfono,
+// dirección). El rol contador NO entra aquí; para facturar dispone de
+// GET /api/facturas/clientes-facturables, que devuelve el mínimo necesario.
+router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
     const { page = 1, limit = 50, buscar } = req.query;
     const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
@@ -47,7 +50,7 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // GET /api/clientes/:id — Detalle de un cliente
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
     const row = await db.getAsync('SELECT * FROM clientes WHERE id = ?', [req.params.id]);
     if (!row) {
@@ -63,13 +66,13 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // POST /api/clientes — Crear cliente
 router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), validate(clienteSchema), async (req, res) => {
   try {
-    const { nombre, telefono, direccion, email } = req.body;
+    const { nombre, telefono, direccion, email, rut, giro } = req.body;
     const result = await db.runAsync(
-      'INSERT INTO clientes (nombre, telefono, direccion, email) VALUES (?, ?, ?, ?)',
-      [nombre, telefono, direccion, email]
+      'INSERT INTO clientes (nombre, telefono, direccion, email, rut, giro) VALUES (?, ?, ?, ?, ?, ?)',
+      [nombre, telefono, direccion, email, rut, giro]
     );
     logger.info(`Cliente creado: ${nombre} por usuario: ${req.user.username}`);
-    res.status(201).json({ id: result.lastID, nombre, telefono, direccion, email });
+    res.status(201).json({ id: result.lastID, nombre, telefono, direccion, email, rut, giro });
   } catch (err) {
     logger.error('Error creando cliente:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
@@ -79,16 +82,16 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), valida
 // PUT /api/clientes/:id — Actualizar cliente
 router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), validate(clienteSchema), async (req, res) => {
   try {
-    const { nombre, telefono, direccion, email } = req.body;
+    const { nombre, telefono, direccion, email, rut, giro } = req.body;
     const result = await db.runAsync(
-      'UPDATE clientes SET nombre = ?, telefono = ?, direccion = ?, email = ? WHERE id = ?',
-      [nombre, telefono, direccion, email, req.params.id]
+      'UPDATE clientes SET nombre = ?, telefono = ?, direccion = ?, email = ?, rut = ?, giro = ? WHERE id = ?',
+      [nombre, telefono, direccion, email, rut, giro, req.params.id]
     );
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
     logger.info(`Cliente actualizado: ${nombre} por usuario: ${req.user.username}`);
-    res.json({ id: req.params.id, nombre, telefono, direccion, email });
+    res.json({ id: req.params.id, nombre, telefono, direccion, email, rut, giro });
   } catch (err) {
     logger.error('Error actualizando cliente:', err);
     res.status(500).json({ error: 'Error interno del servidor' });

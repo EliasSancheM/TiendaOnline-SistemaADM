@@ -48,12 +48,15 @@ const registerSchema = Joi.object({
   email: Joi.string().email().required()
 });
 
-// Esquema de validación para detalles de pedido
+// Esquema de validación para detalles de pedido.
+// precio_unitario y subtotal NO figuran aquí a propósito: el servidor los
+// recalcula con el precio real del catálogo (ver recalcularImportes en
+// routes/pedidosRoutes.js). El panel los sigue enviando y stripUnknown los
+// descarta sin error. Declararlos solo serviría para que una restricción sobre
+// un valor que igualmente se ignora rechazara peticiones válidas.
 const detallePedidoSchema = Joi.object({
   producto_id: Joi.number().integer().positive().required(),
-  cantidad: Joi.number().integer().min(1).required(),
-  precio_unitario: Joi.number().positive().required(),
-  subtotal: Joi.number().min(0).required()
+  cantidad: Joi.number().integer().min(1).required()
 });
 
 // Esquema de validación para pedidos
@@ -64,12 +67,16 @@ const pedidoSchema = Joi.object({
   periodo: Joi.string().valid('mañana', 'tarde').required()
     .messages({ 'any.only': 'El periodo debe ser "mañana" o "tarde"' }),
   estado: Joi.string().valid('pendiente', 'en_proceso', 'completado', 'cancelado').default('pendiente'),
-  total: Joi.number().min(0).default(0),
+  // `total` se omite adrede: se deriva de los detalles (ver detallePedidoSchema).
   notas: Joi.string().max(500).allow('', null),
   detalles: Joi.array().items(detallePedidoSchema).optional()
 });
 
-// Esquema de validación para facturas
+// Esquema de validación para facturas.
+// subtotal, impuestos y total NO figuran aquí a propósito: el servidor los
+// recalcula a partir de los pedidos incluidos (ver calcularImportes en
+// routes/facturasRoutes.js). En el panel ya son campos de solo lectura; lo que
+// envíe el cliente lo descarta stripUnknown.
 const facturaSchema = Joi.object({
   cliente_id: Joi.number().integer().positive().required()
     .messages({ 'any.required': 'El cliente es obligatorio' }),
@@ -78,9 +85,6 @@ const facturaSchema = Joi.object({
     .messages({ 'any.required': 'El número de factura es obligatorio' }),
   fecha: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}/).required()
     .messages({ 'string.pattern.base': 'La fecha debe tener formato YYYY-MM-DD' }),
-  subtotal: Joi.number().min(0).required(),
-  impuestos: Joi.number().min(0).required(),
-  total: Joi.number().min(0).required(),
   estado: Joi.string().valid('pendiente', 'pagada', 'anulada').default('pendiente'),
   notas: Joi.string().max(500).allow('', null)
 });

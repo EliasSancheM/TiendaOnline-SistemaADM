@@ -113,7 +113,9 @@ function Facturas() {
 
   const fetchClientes = useCallback(async () => {
     try {
-      const response = await authenticatedFetch('/api/clientes?limit=200');
+      // Endpoint acotado a facturación (id, nombre, rut, giro, dirección).
+      // /api/clientes queda reservado a admin y empleado por contener PII.
+      const response = await authenticatedFetch('/api/facturas/clientes-facturables');
       if (response.ok) {
         const json = await response.json();
         setClientes(json.data || json);
