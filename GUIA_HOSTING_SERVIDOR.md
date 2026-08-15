@@ -1,5 +1,9 @@
 # 🌐 Guía de Hosting: Dónde Conseguir un Servidor Real
 
+> ⚠️ **Documento de referencia general, con precios desfasados.** Para desplegar
+> este proyecto sigue [DESPLIEGUE_RAILWAY.md](DESPLIEGUE_RAILWAY.md), que tiene
+> los pasos concretos y las variables que el código necesita de verdad.
+
 ## 🎯 Opciones de Hosting para ADM Panadería
 
 ### 🆓 **OPCIONES GRATUITAS** (Recomendadas para empezar)

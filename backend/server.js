@@ -30,8 +30,11 @@ const PORT = process.env.PORT || 5000;
 // convierten en 10 para el mundo entero.
 // Se activa solo si sabemos que hay un proxy delante. Confiar en la cabecera
 // sin proxy permitiría falsear la IP y esquivar el límite a voluntad.
+// RAILWAY_STATIC_URL es la variable antigua y hoy puede no existir; se mira
+// también RAILWAY_ENVIRONMENT, que Railway sí define siempre.
 const detrasDeProxy = process.env.TRUST_PROXY || process.env.VERCEL ||
-  process.env.RAILWAY_STATIC_URL || process.env.RENDER;
+  process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_STATIC_URL ||
+  process.env.RENDER;
 if (detrasDeProxy) {
   app.set('trust proxy', 1);
   logger.info('trust proxy activado: la IP del cliente se toma de X-Forwarded-For');

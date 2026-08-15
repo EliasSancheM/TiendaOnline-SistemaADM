@@ -24,6 +24,16 @@ const { soloFecha, soloMes } = require('../utils/fechas');
 
 let app;
 let mockDb;
+let hoyStr; // fecha local de hoy, con la que se siembra el pedido de referencia
+
+/** Deja la tabla de pedidos en su estado inicial: un pedido de hoy por 5000. */
+async function sembrarPedidoDeHoy() {
+  await mockDb.runAsync('DELETE FROM pedidos');
+  await mockDb.runAsync(
+    'INSERT INTO pedidos (id, cliente_id, fecha, periodo, estado, total) VALUES (1, 1, ?, ?, ?, ?)',
+    [hoyStr, 'mañana', 'completado', 5000]
+  );
+}
 
 const TOKEN = jwt.sign(
   { id: 1, username: 'admin_test', role: 'admin', nombre_completo: 'Test' },
@@ -106,11 +116,8 @@ describe('GET /api/pedidos/dashboard-stats', () => {
     await mockDb.runAsync('INSERT INTO productos (id, nombre, precio) VALUES (1, ?, ?)', ['Pan', 1000]);
 
     const hoy = new Date();
-    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
-    await mockDb.runAsync(
-      'INSERT INTO pedidos (id, cliente_id, fecha, periodo, estado, total) VALUES (1, 1, ?, ?, ?, ?)',
-      [hoyStr, 'mañana', 'completado', 5000]
-    );
+    hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    await sembrarPedidoDeHoy();
     await mockDb.runAsync(
       'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (1, 1, 5, 1000, 5000)'
     );
@@ -139,6 +146,45 @@ describe('GET /api/pedidos/dashboard-stats', () => {
 
     // La venta de hoy tiene que haber caído en el último día de la serie semanal
     expect(res.body.ventasSemanales[6].total).toBe(5000);
+  });
+
+  it('imputa la venta al día local aunque en UTC ya sea mañana', async () => {
+    // 23:30 en Chile (UTC-4) son las 03:30 UTC del día siguiente. Con las claves
+    // construidas por toISOString(), el bucket "de hoy" se etiquetaba con la
+    // fecha de mañana y las ventas del día salían en cero: durante cuatro horas
+    // cada noche el dashboard mentía.
+    jest.useFakeTimers({
+      now: new Date(2026, 7, 14, 23, 30, 0),
+      doNotFake: [
+        'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
+        'setImmediate', 'clearImmediate', 'nextTick', 'queueMicrotask',
+        'performance', 'hrtime'
+      ]
+    });
+
+    try {
+      await mockDb.runAsync('DELETE FROM pedidos');
+      await mockDb.runAsync(
+        `INSERT INTO pedidos (id, cliente_id, fecha, periodo, estado, total)
+         VALUES (99, 1, '2026-08-14', 'tarde', 'completado', 7000)`
+      );
+
+      const res = await request(app)
+        .get('/api/pedidos/dashboard-stats')
+        .set('Authorization', `Bearer ${TOKEN}`);
+
+      expect(res.statusCode).toBe(200);
+
+      const hoy = res.body.ventasSemanales[6];
+      expect(hoy.date).toBe('2026-08-14'); // no '2026-08-15'
+      expect(hoy.total).toBe(7000);
+
+      expect(res.body.ventasMensuales[11].month).toBe('2026-08');
+      expect(res.body.ventasMensuales[11].total).toBe(7000);
+    } finally {
+      jest.useRealTimers();
+      await sembrarPedidoDeHoy(); // devuelve la tabla a su estado inicial
+    }
   });
 
   it('no revienta cuando las fechas llegan como Date, que es lo que hace PostgreSQL', async () => {

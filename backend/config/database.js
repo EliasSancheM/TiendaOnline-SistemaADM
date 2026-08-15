@@ -506,7 +506,8 @@ if (DB_TYPE === 'postgresql' || DB_TYPE === 'postgres') {
   db = initPostgreSQL();
 } else {
   // Evitar cargar SQLite en entornos de producción en la nube para prevenir errores de GLIBC / dependencias nativas
-  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_STATIC_URL || process.env.RENDER) {
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT ||
+      process.env.RAILWAY_STATIC_URL || process.env.RENDER) {
     logger.error('❌ ERROR CRÍTICO DE CONFIGURACIÓN: Se detectó un entorno de producción o nube (Railway/Render) pero NO se ha configurado la variable de entorno DATABASE_URL ni DB_TYPE=postgresql.');
     logger.error('👉 ACCIÓN REQUERIDA: Ingresa al panel de tu servicio en Railway, ve a la pestaña "Variables" y agrega:');
     logger.error('   1. DB_TYPE = postgresql');

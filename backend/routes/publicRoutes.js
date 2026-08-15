@@ -5,6 +5,7 @@ const logger = require('../config/logger');
 const { sendOrderConfirmationEmail } = require('../utils/emailService');
 const { createTransaction, commitTransaction } = require('../utils/webpayService');
 const { validate, publicCheckoutSchema } = require('../middlewares/validatorMiddleware');
+const { soloFecha } = require('../utils/fechas');
 
 // POST /api/public/checkout — Crear pedido e iniciar pago con Webpay
 router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
@@ -64,7 +65,10 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
 
     // 4. Crear pedido y detalles en una transacción usando el total calculado en backend
     const pedidoId = await db.transaction(async (tx) => {
-      const fecha = new Date().toISOString().split('T')[0];
+      // Fecha LOCAL, no UTC: con toISOString() un pedido hecho después de las
+      // 20:00 en Chile se guardaba con la fecha del día siguiente y aparecía en
+      // la lista de producción equivocada.
+      const fecha = soloFecha(new Date());
       // Se crea como pendiente_pago
       const resPedido = await tx.runAsync(
         'INSERT INTO pedidos (cliente_id, fecha, periodo, estado, total, notas) VALUES (?, ?, ?, ?, ?, ?)',

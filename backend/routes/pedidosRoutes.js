@@ -121,9 +121,13 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
     // Para mantener compatibilidad entre SQLite y Postgres sin funciones específicas,
     // traemos los detalles y pedidos del último año y agrupamos en memoria.
     // Esto es muy rápido para el volumen de una panadería.
+    // Todas las claves y límites se calculan en hora LOCAL, igual que las fechas
+    // que se guardan en `pedidos.fecha`. Con toISOString() se usaba UTC: en
+    // Chile (UTC-4), entre las 20:00 y medianoche el día "de hoy" se etiquetaba
+    // con la fecha de mañana y las ventas del día aparecían en cero.
     const lastYearDate = new Date();
     lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
-    const lastYearStr = lastYearDate.toISOString().split('T')[0];
+    const lastYearStr = soloFecha(lastYearDate);
 
     const pedidos = await db.allAsync(`SELECT id, fecha, total FROM pedidos WHERE fecha >= ?`, [lastYearStr]);
     const detalles = await db.allAsync(`
@@ -157,23 +161,23 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
     // 2. Ventas Semanales (Últimos 7 días)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const sevenDaysStr = sevenDaysAgo.toISOString().split('T')[0];
-    
+    const sevenDaysStr = soloFecha(sevenDaysAgo);
+
     const weeklyMap = {};
     // Rellenar los últimos 7 días con 0
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      weeklyMap[d.toISOString().split('T')[0]] = 0;
+      weeklyMap[soloFecha(d)] = 0;
     }
 
     // 3. Ventas Mensuales (Últimos 12 meses)
     const monthlyMap = {};
     for (let i = 11; i >= 0; i--) {
       const d = new Date();
+      d.setDate(1); // evita que setMonth se desborde en los días 29-31
       d.setMonth(d.getMonth() - i);
-      const monthStr = d.toISOString().substring(0, 7); // YYYY-MM
-      monthlyMap[monthStr] = 0;
+      monthlyMap[soloMes(d)] = 0;
     }
 
     for (const p of pedidos) {

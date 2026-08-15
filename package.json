@@ -7,6 +7,11 @@
     "node": ">=18"
   },
   "comment": "Estas dependencias son las del backend en runtime. Vercel las instala en la raíz para que la función serverless (api/index.js → backend/server.js) las resuelva. sqlite3 NO se incluye: en Vercel se usa PostgreSQL obligatoriamente.",
+  "scriptsComment": "Scripts para un despliegue monolítico (Railway/Render): el backend sirve el build de React. Vercel NO los usa, allí manda buildCommand de vercel.json. En backend se omiten las devDependencies a propósito: incluyen sqlite3, un módulo nativo que no hace falta en producción (se usa PostgreSQL) y cuya compilación puede tumbar el build.",
+  "scripts": {
+    "build": "cd frontend && npm ci && npm run build && cd ../backend && npm ci --omit=dev",
+    "start": "node backend/server.js"
+  },
   "dependencies": {
     "axios": "^1.14.0",
     "bcryptjs": "^3.0.2",
