@@ -1,14 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm install && npm run build",
+  "comment": "Vercel solo sirve el frontend estatico. El backend vive en Railway; el frontend lo alcanza via REACT_APP_API_URL (variable de entorno del proyecto en Vercel, se inyecta en tiempo de BUILD).",
+  "installCommand": "echo 'sin dependencias en la raiz: el frontend instala las suyas en buildCommand'",
+  "buildCommand": "cd frontend && npm ci && npm run build",
   "outputDirectory": "frontend/build",
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 30
-    }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/((?!static/|.*\\..*).*)", "destination": "/index.html" }
   ]
 }
