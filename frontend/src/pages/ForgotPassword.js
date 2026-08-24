@@ -12,6 +12,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import { Email, ArrowBack } from '@mui/icons-material';
+import { buildApiUrl } from '../config/api';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -26,8 +27,7 @@ const ForgotPassword = () => {
     setError('');
 
     try {
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiBaseUrl}/api/auth/forgot-password`, {
+      const response = await fetch(buildApiUrl('/api/auth/forgot-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })

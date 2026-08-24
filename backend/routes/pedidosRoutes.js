@@ -117,9 +117,21 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
       monthlyMap[monthStr] = 0;
     }
 
+    // `fecha` llega como texto 'YYYY-MM-DD' en ambos motores (ver el type parser
+    // de DATE en config/database.js). Se normaliza igualmente por si algún driver
+    // entrega un Date: esta ruta alimenta la portada del panel y no debe caerse.
+    const aTextoFecha = (valor) => {
+      if (valor instanceof Date) {
+        const dosDigitos = (n) => String(n).padStart(2, '0');
+        return `${valor.getFullYear()}-${dosDigitos(valor.getMonth() + 1)}-${dosDigitos(valor.getDate())}`;
+      }
+      return String(valor);
+    };
+
     for (const p of pedidos) {
-      const pDate = p.fecha.substring(0, 10);
-      const pMonth = p.fecha.substring(0, 7);
+      const fechaTexto = aTextoFecha(p.fecha);
+      const pDate = fechaTexto.substring(0, 10);
+      const pMonth = fechaTexto.substring(0, 7);
       
       if (pDate >= sevenDaysStr) {
         if (weeklyMap[pDate] !== undefined) {

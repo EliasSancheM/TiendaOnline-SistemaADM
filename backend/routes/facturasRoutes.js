@@ -110,28 +110,34 @@ router.get('/reporte', authenticateToken, authorizeRole(['admin', 'contador']), 
     const currentAnio = anio || new Date().getFullYear();
     const currentMes = mes || (new Date().getMonth() + 1);
 
-    // Formatear mes con zero-padding para SQLite
+    // Rango [primer día del mes, primer día del mes siguiente).
+    // NO usar `fecha LIKE '2026-08-%'`: en SQLite funciona porque las fechas se
+    // guardan como texto, pero en PostgreSQL `fecha` es DATE y LIKE sobre un DATE
+    // revienta con «operator does not exist: date ~~ unknown». La comparación por
+    // rango es válida en ambos motores.
     const mesFormatted = String(currentMes).padStart(2, '0');
-    const pattern = `${currentAnio}-${mesFormatted}-%`;
+    const desde = `${currentAnio}-${mesFormatted}-01`;
+    const hasta = new Date(Date.UTC(Number(currentAnio), Number(currentMes), 1))
+      .toISOString().split('T')[0];
 
     const stats = await db.getAsync(
-      `SELECT 
+      `SELECT
         COUNT(*) as total_documentos,
         SUM(subtotal) as neto,
         SUM(impuestos) as iva,
         SUM(total) as total,
         SUM(CASE WHEN estado = 'pagada' THEN total ELSE 0 END) as recaudado
-       FROM facturas 
-       WHERE fecha LIKE ?`,
-      [pattern]
+       FROM facturas
+       WHERE fecha >= ? AND fecha < ?`,
+      [desde, hasta]
     );
 
     const porEstado = await db.allAsync(
-      `SELECT estado, COUNT(*) as cantidad, SUM(total) as monto 
-       FROM facturas 
-       WHERE fecha LIKE ? 
+      `SELECT estado, COUNT(*) as cantidad, SUM(total) as monto
+       FROM facturas
+       WHERE fecha >= ? AND fecha < ?
        GROUP BY estado`,
-      [pattern]
+      [desde, hasta]
     );
 
     res.json({

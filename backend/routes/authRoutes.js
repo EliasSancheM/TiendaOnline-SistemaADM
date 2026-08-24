@@ -10,14 +10,34 @@ const { authenticateToken, authorizeRole } = require('../middlewares/authMiddlew
 const { sendWelcomeEmail, sendPasswordResetEmail } = require('../utils/emailService');
 const { addToken: blacklistToken } = require('../utils/tokenBlacklist');
 
-// Cookie options helper
-const getCookieOptions = () => ({
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax',
-  maxAge: 24 * 60 * 60 * 1000, // 24 hours
-  path: '/'
-});
+// ─── Opciones de la cookie de sesión ─────────────────────────────────
+// El frontend (Vercel) y el backend (Railway) están en dominios distintos, así
+// que la cookie de sesión es "de terceros" para el navegador. Con sameSite 'lax'
+// el navegador NO la envía en las peticiones fetch entre ambos dominios: el
+// usuario inicia sesión correctamente, pero la siguiente petición llega sin
+// cookie y responde 401, expulsándolo. Para que viaje entre sitios hace falta
+// sameSite 'none', que a su vez exige Secure (solo HTTPS) o el navegador la
+// descarta. Vercel y Railway sirven por HTTPS, así que se cumple.
+//
+// Contrapartida: sameSite 'none' no protege por sí solo frente a CSRF. Aquí el
+// riesgo queda acotado porque CORS solo admite los orígenes de CORS_ORIGIN, y el
+// navegador exige una respuesta CORS válida antes de entregar la respuesta.
+//
+// COOKIE_SAMESITE permite forzar 'lax' si algún día el frontend y el backend
+// comparten dominio, que es la opción más segura cuando es posible.
+const getCookieOptions = () => {
+  const sameSite = process.env.COOKIE_SAMESITE
+    || (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
+
+  return {
+    httpOnly: true,
+    // 'none' sin Secure es descartada por todos los navegadores modernos.
+    secure: sameSite === 'none' ? true : process.env.NODE_ENV === 'production',
+    sameSite,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    path: '/'
+  };
+};
 
 // POST /api/auth/login
 router.post('/login', validate(loginSchema), async (req, res) => {
@@ -160,8 +180,11 @@ router.post('/logout', authenticateToken, (req, res) => {
     blacklistToken(req.token, req.user.exp);
   }
   
-  // Clear the httpOnly cookie
-  res.clearCookie('token', { path: '/' });
+  // Clear the httpOnly cookie. El navegador solo borra la cookie si los atributos
+  // coinciden con los que se usaron al crearla (sameSite y secure incluidos): con
+  // `{ path: '/' }` a secas la cookie cross-site sobrevivía al logout.
+  const { maxAge, ...clearOptions } = getCookieOptions();
+  res.clearCookie('token', clearOptions);
   
   logger.info(`Logout para usuario: ${req.user.username} desde IP: ${req.ip}`);
   res.json({ message: 'Logout exitoso' });

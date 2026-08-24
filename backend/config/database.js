@@ -63,7 +63,9 @@ function initSQLite() {
   conn.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
     date: (col) => `DATE(${col}, 'localtime')`,
-    groupConcat: (col) => `GROUP_CONCAT(${col})`
+    groupConcat: (col) => `GROUP_CONCAT(${col})`,
+    // LIKE en SQLite ya ignora mayúsculas/minúsculas para ASCII; en PostgreSQL no.
+    like: () => 'LIKE'
   };
 
   // SQLite transaction helper (using the same connection)
@@ -86,7 +88,26 @@ function initSQLite() {
 //  PostgreSQL Adapter
 // ──────────────────────────────────────────────────
 function initPostgreSQL() {
-  const { Pool } = require('pg');
+  const { Pool, types } = require('pg');
+
+  // Devolver las columnas DATE como texto 'YYYY-MM-DD', igual que SQLite.
+  //
+  // Por defecto node-postgres convierte DATE (OID 1082) en un objeto Date de
+  // JavaScript, y eso rompe el código escrito contra SQLite de dos formas:
+  //   1. `pedido.fecha.substring(0, 10)` (dashboard-stats) lanza
+  //      «substring is not a function» y tumba el panel de inicio.
+  //   2. Un Date se serializa a JSON como '2026-08-24T00:00:00.000Z', y el
+  //      frontend lo formatea en horario local: en Chile (UTC-4) mostraría el
+  //      día anterior en pedidos y facturas.
+  // Fijando el parser, ambos motores entregan exactamente el mismo valor y no
+  // hace falta código condicional en las rutas.
+  types.setTypeParser(1082, (value) => value);
+
+  // COUNT(*) devuelve BIGINT (OID 20) y node-postgres lo entrega como texto para
+  // no perder precisión, así que `pagination.total` viajaba como "5" en vez de 5
+  // y los totales del reporte de facturación se concatenaban en lugar de sumarse.
+  // Los conteos de una panadería están muy lejos del límite seguro de JS.
+  types.setTypeParser(20, (value) => parseInt(value, 10));
 
   const poolConfig = process.env.DATABASE_URL
     ? { connectionString: process.env.DATABASE_URL }
@@ -124,7 +145,9 @@ function initPostgreSQL() {
   const helpers = {
     now: () => DB_TYPE === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()',
     date: (col) => DB_TYPE === 'sqlite' ? `DATE(${col}, 'localtime')` : `${col}::date`,
-    groupConcat: (col) => DB_TYPE === 'sqlite' ? `GROUP_CONCAT(${col})` : `STRING_AGG(${col}::text, ',')`
+    groupConcat: (col) => DB_TYPE === 'sqlite' ? `GROUP_CONCAT(${col})` : `STRING_AGG(${col}::text, ',')`,
+    // ILIKE para que buscar "pan" encuentre "Pan Amasado", igual que hace SQLite.
+    like: () => 'ILIKE'
   };
 
   // Translate ? placeholders to $1, $2, ... for PostgreSQL
@@ -221,14 +244,24 @@ function initPostgreSQL() {
 // ──────────────────────────────────────────────────
 function createTables(conn) {
   conn.serialize(() => {
+    // rut/giro deben existir aquí igual que en el esquema de PostgreSQL: los usa
+    // el detalle de factura (`c.rut`). Si solo se añaden con migrate_rut.js, una
+    // instalación nueva arranca con la tabla incompleta y ese endpoint responde 500.
     conn.run(`CREATE TABLE IF NOT EXISTS clientes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nombre TEXT NOT NULL,
       telefono TEXT,
       direccion TEXT,
       email TEXT,
+      rut TEXT,
+      giro TEXT,
       fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    )`, () => {
+      // Bases de datos creadas antes de este cambio: añadir las columnas que falten.
+      // SQLite no admite ADD COLUMN IF NOT EXISTS, así que se ignora el error de duplicado.
+      conn.run(`ALTER TABLE clientes ADD COLUMN rut TEXT`, () => {});
+      conn.run(`ALTER TABLE clientes ADD COLUMN giro TEXT`, () => {});
+    });
 
     conn.run(`CREATE TABLE IF NOT EXISTS pedidos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

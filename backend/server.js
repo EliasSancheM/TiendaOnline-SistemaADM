@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const os = require('os');
+const fs = require('fs');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const logger = require('./config/logger');
@@ -22,6 +23,21 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32 ||
 // Inicializar la aplicación Express
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// ─── Confianza en el proxy inverso ─────────────────────────────────
+// Railway, Render y Vercel sirven la app detrás de un proxy. Sin esto:
+//   1. `req.ip` es la IP del proxy para TODOS los visitantes, así que el rate
+//      limit se aplica al conjunto: 100 peticiones y la tienda entera queda
+//      bloqueada, y 10 logins fallidos dejan sin acceso a todo el personal.
+//   2. express-rate-limit v8 detecta la cabecera X-Forwarded-For sin trust proxy
+//      y aborta con ERR_ERL_UNEXPECTED_X_FORWARDED_FOR.
+// Se confía en un solo salto (el proxy de la plataforma), no en toda la cadena:
+// 'trust proxy: true' permitiría a cualquiera falsear su IP con X-Forwarded-For
+// y saltarse el rate limit.
+const TRUST_PROXY = process.env.TRUST_PROXY !== undefined
+  ? (isNaN(Number(process.env.TRUST_PROXY)) ? process.env.TRUST_PROXY : Number(process.env.TRUST_PROXY))
+  : (process.env.NODE_ENV === 'production' ? 1 : false);
+app.set('trust proxy', TRUST_PROXY);
 
 // Rate limiting general para toda la API
 const limiter = rateLimit({
@@ -47,12 +63,20 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     
+    // CORS_ORIGIN admite varios orígenes separados por coma: en Vercel el frontend
+    // tiene la URL de producción y además una distinta por cada preview deploy, y
+    // con un solo valor las previews quedan bloqueadas.
+    const configuredOrigins = (process.env.CORS_ORIGIN || '')
+      .split(',')
+      .map(o => o.trim())
+      .filter(Boolean);
+
     const allowedOrigins = [
       'http://localhost:3000',
       'http://127.0.0.1:3000',
-      process.env.CORS_ORIGIN
+      ...configuredOrigins
     ];
-    
+
 
     const networkInterfaces = os.networkInterfaces();
     for (const interfaceName in networkInterfaces) {
@@ -98,7 +122,10 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 const path = require('path');
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Se sirve desde el mismo directorio donde multer escribe (configurable con
+// UPLOADS_DIR para poder apuntarlo a un volumen persistente en producción).
+const { UPLOADS_ROOT } = require('./config/uploads');
+app.use('/uploads', express.static(UPLOADS_ROOT));
 
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.url} - IP: ${req.ip}`);
@@ -124,13 +151,22 @@ app.use('/api/productos', productosRoutes);
 app.use('/api/facturas', facturasRoutes);
 app.use('/api/public', publicRoutes);
 
+// Health check: Railway y cualquier monitor necesitan una ruta que responda 200
+// sin tocar la base de datos ni exigir autenticación. Va ANTES del catch-all del
+// SPA para que no lo intercepte.
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime() });
+});
+
 // ─── Producción: servir frontend desde el backend ──────────────────
-// En producción (Railway, Render, etc.) el backend sirve el build de React
-// para que todo funcione como una sola aplicación.
-// En Vercel NO hace falta: la plataforma sirve el build estático del frontend
-// y esta función solo atiende /api/*. Solo aplica en Railway/Render/local.
-if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
-  const frontendBuildPath = path.join(__dirname, '../frontend/build');
+// Solo cuando el build de React está junto al backend (Render, o local con
+// NODE_ENV=production). En el despliegue actual NO ocurre: el frontend vive en
+// Vercel y el backend en Railway, donde `frontend/build` no existe. Sin la
+// comprobación de existencia, el catch-all respondería ENOENT (500) a toda ruta
+// que no sea /api/*. En Vercel tampoco aplica: la plataforma sirve el estático.
+const frontendBuildPath = path.join(__dirname, '../frontend/build');
+if (process.env.NODE_ENV === 'production' && !process.env.VERCEL &&
+    fs.existsSync(path.join(frontendBuildPath, 'index.html'))) {
   app.use(express.static(frontendBuildPath));
 
   // Catch-all SPA. OJO: en Express 5 `app.get('*')` es inválido (path-to-regexp
@@ -142,6 +178,7 @@ if (process.env.NODE_ENV === 'production' && !process.env.VERCEL) {
 
   logger.info(`Sirviendo frontend desde: ${frontendBuildPath}`);
 }
+
 
 // Manejador global de errores
 app.use((err, req, res, next) => {
