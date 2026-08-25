@@ -174,10 +174,17 @@ router.get('/verify', authenticateToken, (req, res) => {
 });
 
 // POST /api/auth/logout — Invalidar token
-router.post('/logout', authenticateToken, (req, res) => {
-  // Blacklist the current token so it can't be reused
+router.post('/logout', authenticateToken, async (req, res) => {
+  // Revocar el token para que no pueda reutilizarse. Ahora se persiste en la
+  // base de datos, asi que el cierre de sesion sobrevive a un reinicio y vale
+  // para todas las instancias.
   if (req.token && req.user.exp) {
-    blacklistToken(req.token, req.user.exp);
+    try {
+      await blacklistToken(req.token, req.user.exp);
+    } catch (err) {
+      logger.error('No se pudo revocar el token en el logout:', err);
+      return res.status(500).json({ error: 'No se pudo cerrar la sesion. Intenta de nuevo.' });
+    }
   }
   
   // Clear the httpOnly cookie. El navegador solo borra la cookie si los atributos

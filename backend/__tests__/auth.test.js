@@ -64,6 +64,9 @@ beforeAll(async () => {
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )`);
   
+  await mockDb.runAsync(`CREATE TABLE IF NOT EXISTS tokens_revocados (
+    token_hash TEXT PRIMARY KEY, expira_en INTEGER NOT NULL
+  )`);
   await mockDb.runAsync(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,

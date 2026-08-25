@@ -231,9 +231,14 @@ function Facturas() {
     
     // Calcular totales basados en pedidos seleccionados
     const pedidosSeleccionados = pedidos.filter(p => newSelectedPedidos.includes(p.id));
-    const subtotal = pedidosSeleccionados.reduce((sum, p) => sum + (p.total || 0), 0);
-    const impuestos = subtotal * 0.19; // 19% IVA (Estándar Chile)
-    const total = subtotal + impuestos;
+    // Los precios del catalogo ya incluyen IVA, asi que el total del pedido es
+    // el importe final y el impuesto se desglosa hacia atras. Debe coincidir con
+    // lo que recalcula el servidor (ver calcularImportes en facturasRoutes.js):
+    // estos campos son solo una vista previa, el backend manda.
+    const redondear = (n) => Math.round(n * 100) / 100;
+    const total = redondear(pedidosSeleccionados.reduce((sum, p) => sum + (p.total || 0), 0));
+    const subtotal = redondear(total / 1.19);
+    const impuestos = redondear(total - subtotal);
     
     // Determinar cliente común (si todos los pedidos son del mismo cliente)
     const clienteIds = [...new Set(pedidosSeleccionados.map(p => p.cliente_id))];

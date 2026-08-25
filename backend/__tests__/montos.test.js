@@ -105,6 +105,18 @@ beforeAll(async () => {
     factura_id INTEGER NOT NULL, pedido_id INTEGER NOT NULL
   )`);
 
+
+  await mockDb.runAsync(`CREATE TABLE usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
+  )`);
+  await mockDb.runAsync(`CREATE TABLE tokens_revocados (
+    token_hash TEXT PRIMARY KEY, expira_en INTEGER NOT NULL
+  )`);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [1, 'empleado_test', 'admin']);
+
   await mockDb.runAsync('INSERT INTO productos (id, nombre, precio) VALUES (?, ?, ?)', [PAN.id, 'Pan', PAN.precio]);
   await mockDb.runAsync('INSERT INTO productos (id, nombre, precio) VALUES (?, ?, ?)', [TORTA.id, 'Torta', TORTA.precio]);
   await mockDb.runAsync('INSERT INTO clientes (id, nombre) VALUES (1, ?)', ['Cliente Uno']);
@@ -271,12 +283,16 @@ describe('POST /api/facturas', () => {
     });
 
     expect(res.statusCode).toBe(201);
-    expect(res.body.subtotal).toBe(115000);
-    expect(res.body.impuestos).toBe(21850);
-    expect(res.body.total).toBe(136850);
+    // Los precios del catalogo son con IVA incluido, asi que 115000 es el total
+    // de la factura y el impuesto se desglosa hacia atras (115000 / 1.19).
+    expect(res.body.total).toBe(115000);
+    expect(res.body.subtotal).toBe(96638.66);
+    expect(res.body.impuestos).toBe(18361.34);
+    // Invariante: el desglose tiene que cuadrar con el total
+    expect(res.body.subtotal + res.body.impuestos).toBeCloseTo(res.body.total, 2);
 
     const guardada = await mockDb.getAsync('SELECT subtotal, impuestos, total FROM facturas WHERE id = ?', [res.body.id]);
-    expect(guardada).toEqual({ subtotal: 115000, impuestos: 21850, total: 136850 });
+    expect(guardada).toEqual({ subtotal: 96638.66, impuestos: 18361.34, total: 115000 });
   });
 
   it('rechaza pedidos de otro cliente', async () => {
@@ -350,6 +366,6 @@ describe('PUT /api/facturas/:id', () => {
     const guardada = await mockDb.getAsync(
       'SELECT subtotal, impuestos, total FROM facturas WHERE id = ?', [creada.body.id]
     );
-    expect(guardada).toEqual({ subtotal: 6000, impuestos: 1140, total: 7140 });
+    expect(guardada).toEqual({ subtotal: 5042.02, impuestos: 957.98, total: 6000 });
   });
 });

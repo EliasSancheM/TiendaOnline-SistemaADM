@@ -343,6 +343,15 @@ function createTables(conn) {
       });
     });
 
+    // Tokens revocados en el logout. Persistido: antes era un Map en memoria,
+    // que se perdia al reiniciar y no se comparte entre instancias.
+    // expira_en es el claim exp del JWT (epoch en segundos): un entero, sin
+    // diferencias de tipo entre motores.
+    conn.run(`CREATE TABLE IF NOT EXISTS tokens_revocados (
+      token_hash TEXT PRIMARY KEY,
+      expira_en INTEGER NOT NULL
+    )`);
+
     // Password reset tokens table
     conn.run(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -477,6 +486,12 @@ async function createTablesPostgreSQL(pool) {
       logger.warn(`No se pudo crear el índice único de factura_pedidos: ${err.message}`);
       logger.warn('Probablemente ya existan pedidos facturados más de una vez. Revísalos y vuelve a arrancar.');
     }
+
+
+    await client.query(`CREATE TABLE IF NOT EXISTS tokens_revocados (
+      token_hash TEXT PRIMARY KEY,
+      expira_en BIGINT NOT NULL
+    )`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id SERIAL PRIMARY KEY,

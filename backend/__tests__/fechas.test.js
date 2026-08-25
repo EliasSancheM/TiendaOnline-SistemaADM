@@ -29,6 +29,8 @@ let hoyStr; // fecha local de hoy, con la que se siembra el pedido de referencia
 /** Deja la tabla de pedidos en su estado inicial: un pedido de hoy por 5000. */
 async function sembrarPedidoDeHoy() {
   await mockDb.runAsync('DELETE FROM pedidos');
+
+
   await mockDb.runAsync(
     'INSERT INTO pedidos (id, cliente_id, fecha, periodo, estado, total) VALUES (1, 1, ?, ?, ?, ?)',
     [hoyStr, 'mañana', 'completado', 5000]
@@ -113,6 +115,17 @@ describe('GET /api/pedidos/dashboard-stats', () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, pedido_id INTEGER, producto_id INTEGER,
       cantidad INTEGER NOT NULL, precio_unitario REAL NOT NULL, subtotal REAL NOT NULL
     )`);
+
+  await mockDb.runAsync(`CREATE TABLE usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
+  )`);
+  await mockDb.runAsync(`CREATE TABLE tokens_revocados (
+    token_hash TEXT PRIMARY KEY, expira_en INTEGER NOT NULL
+  )`);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [1, 'admin_test', 'admin']);
 
     await mockDb.runAsync('INSERT INTO productos (id, nombre, precio) VALUES (1, ?, ?)', ['Pan', 1000]);
 

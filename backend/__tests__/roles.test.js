@@ -26,9 +26,13 @@ let mockDb;
 
 // Un token por rol. authenticateToken confía en el payload del JWT, así que
 // firmarlos directamente equivale a haber hecho login con ese usuario.
+// Cada rol tiene su propio usuario en la BD: authenticateToken compara el rol
+// del token con el guardado y rechaza el token si no coinciden.
+const ID_POR_ROL = { admin: 1, empleado: 2, contador: 3 };
+
 const tokenPara = (role) =>
   jwt.sign(
-    { id: 1, username: `user_${role}`, role, nombre_completo: `Test ${role}` },
+    { id: ID_POR_ROL[role], username: `user_${role}`, role, nombre_completo: `Test ${role}` },
     process.env.JWT_SECRET,
     { expiresIn: '1h' }
   );
@@ -102,6 +106,20 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     factura_id INTEGER NOT NULL, pedido_id INTEGER NOT NULL
   )`);
+
+
+  await mockDb.runAsync(`CREATE TABLE usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
+  )`);
+  await mockDb.runAsync(`CREATE TABLE tokens_revocados (
+    token_hash TEXT PRIMARY KEY, expira_en INTEGER NOT NULL
+  )`);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [1, 'user_admin', 'admin']);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [2, 'user_empleado', 'empleado']);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [3, 'user_contador', 'contador']);
 
   await mockDb.runAsync(
     `INSERT INTO clientes (id, nombre, telefono, direccion, email, rut, giro)

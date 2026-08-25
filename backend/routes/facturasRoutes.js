@@ -8,6 +8,19 @@ const billingService = require('../services/billingService');
 
 const TASA_IVA = 0.19; // IVA Chile
 
+// Los precios del catalogo son los que ve el cliente en el mostrador y en la
+// tienda, es decir CON IVA incluido (en Chile el precio al consumidor debe
+// exhibirse final). Por tanto el total de un pedido ya trae el impuesto dentro
+// y hay que DESGLOSARLO, no sumarlo encima.
+//
+// Antes se hacia lo contrario: subtotal = suma de totales y luego +19%, lo que
+// inflaba cada factura un 19% y ademas contradecia a la plantilla de
+// impresion, que ya dividia por 1.19.
+//
+// PRECIOS_IVA_INCLUIDO=false vuelve al comportamiento anterior por si algun
+// dia el catalogo pasa a manejarse en valores netos.
+const PRECIOS_CON_IVA = process.env.PRECIOS_IVA_INCLUIDO !== 'false';
+
 const redondear = (n) => Math.round(n * 100) / 100;
 
 const errorDeDatos = (mensaje) => {
@@ -68,9 +81,18 @@ async function calcularImportes(pedidosIds, clienteId, ejecutor, facturaIdActual
     throw errorDeDatos(`El pedido ${repetidos.join(', ')} ya está incluido en otra factura`);
   }
 
-  const subtotal = redondear(pedidos.reduce((suma, p) => suma + (p.total || 0), 0));
-  const impuestos = redondear(subtotal * TASA_IVA);
+  const sumaPedidos = pedidos.reduce((suma, p) => suma + (p.total || 0), 0);
 
+  if (PRECIOS_CON_IVA) {
+    // El total ya incluye IVA: se desglosa hacia atras.
+    const total = redondear(sumaPedidos);
+    const subtotal = redondear(sumaPedidos / (1 + TASA_IVA));
+    return { subtotal, impuestos: redondear(total - subtotal), total };
+  }
+
+  // Catalogo en valores netos: el impuesto se agrega encima.
+  const subtotal = redondear(sumaPedidos);
+  const impuestos = redondear(subtotal * TASA_IVA);
   return { subtotal, impuestos, total: redondear(subtotal + impuestos) };
 }
 

@@ -1,60 +1,61 @@
 /**
- * In-memory JWT Token Blacklist
- * Tokens are added on logout and checked on every authenticated request.
- * Expired entries are automatically cleaned up every 15 minutes.
+ * Lista de tokens revocados, persistida en la base de datos.
+ *
+ * Antes era un Map en memoria. Eso funciona con un solo proceso, pero se pierde
+ * en cada reinicio y no se comparte entre instancias: cerrar sesión no
+ * invalidaba nada de forma fiable. Al vivir en la base de datos, el logout es
+ * efectivo aunque el proceso se reinicie o haya varias réplicas.
+ *
+ * Se guarda el SHA-256 del token, no el token: quien lea la tabla no obtiene
+ * credenciales utilizables. `expira_en` es el claim `exp` del propio JWT (epoch
+ * en segundos), así que un entero basta y no hay diferencias de tipo entre
+ * SQLite y PostgreSQL.
  */
+const crypto = require('crypto');
+const db = require('../config/database');
 const logger = require('../config/logger');
 
-// Map<tokenString, expiresAtTimestamp>
-const blacklist = new Map();
+const hash = (token) => crypto.createHash('sha256').update(token).digest('hex');
+
+const ahora = () => Math.floor(Date.now() / 1000);
 
 /**
- * Add a token to the blacklist.
- * @param {string} token - The JWT token string
- * @param {number} expiresAt - Unix timestamp (seconds) when the token expires
+ * Revoca un token hasta que caduque por sí solo.
+ * @param {string} token JWT completo
+ * @param {number} expiresAt claim `exp` del token (epoch en segundos)
  */
-const addToken = (token, expiresAt) => {
-  blacklist.set(token, expiresAt * 1000); // Convert to ms
-  logger.info(`Token añadido a la blacklist. Total: ${blacklist.size}`);
+const addToken = async (token, expiresAt) => {
+  try {
+    await db.runAsync(
+      'INSERT INTO tokens_revocados (token_hash, expira_en) VALUES (?, ?)',
+      [hash(token), expiresAt || ahora()]
+    );
+  } catch (err) {
+    // Cerrar sesión dos veces con el mismo token viola la clave primaria y no
+    // es un problema: el token ya estaba revocado.
+    if (!/UNIQUE|duplicate key/i.test(err.message || '')) throw err;
+  }
 };
 
 /**
- * Check if a token is blacklisted.
  * @param {string} token
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-const isBlacklisted = (token) => {
-  return blacklist.has(token);
+const isBlacklisted = async (token) => {
+  const fila = await db.getAsync(
+    'SELECT 1 as revocado FROM tokens_revocados WHERE token_hash = ? AND expira_en > ?',
+    [hash(token), ahora()]
+  );
+  return !!fila;
 };
 
-/**
- * Remove expired tokens from the blacklist.
- */
-const cleanup = () => {
-  const now = Date.now();
-  let removed = 0;
-  for (const [token, expiresAt] of blacklist.entries()) {
-    if (expiresAt <= now) {
-      blacklist.delete(token);
-      removed++;
-    }
+/** Borra las entradas ya caducadas: el JWT expirado se rechaza igualmente. */
+const cleanup = async () => {
+  const res = await db.runAsync('DELETE FROM tokens_revocados WHERE expira_en <= ?', [ahora()]);
+  if (res.changes > 0) {
+    logger.info(`Limpieza de tokens revocados: ${res.changes} entradas caducadas eliminadas`);
   }
-  if (removed > 0) {
-    logger.info(`Blacklist cleanup: ${removed} tokens expirados eliminados. Restantes: ${blacklist.size}`);
-  }
+  return res.changes;
 };
 
-// Run cleanup every 15 minutes
-const cleanupInterval = setInterval(cleanup, 15 * 60 * 1000);
-
-// Prevent the interval from keeping the process alive
-if (cleanupInterval.unref) {
-  cleanupInterval.unref();
-}
-
-module.exports = {
-  addToken,
-  isBlacklisted,
-  cleanup,
-  getSize: () => blacklist.size
-};
+module.exports = { addToken, isBlacklisted, cleanup, hash };

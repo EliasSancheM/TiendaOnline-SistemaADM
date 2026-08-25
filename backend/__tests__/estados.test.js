@@ -38,6 +38,8 @@ async function sembrarPedido(estado) {
     `INSERT INTO pedidos (cliente_id, fecha, periodo, estado, total) VALUES (1, '2026-08-10', 'mañana', ?, 1000)`,
     [estado]
   );
+
+
   await mockDb.runAsync(
     'INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, 1, ?, ?)',
     [res.lastID, PAN.id, PAN.precio, PAN.precio]
@@ -104,6 +106,17 @@ beforeAll(async () => {
     id INTEGER PRIMARY KEY AUTOINCREMENT, pedido_id INTEGER, producto_id INTEGER,
     cantidad INTEGER NOT NULL, precio_unitario REAL NOT NULL, subtotal REAL NOT NULL
   )`);
+
+  await mockDb.runAsync(`CREATE TABLE usuarios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
+  )`);
+  await mockDb.runAsync(`CREATE TABLE tokens_revocados (
+    token_hash TEXT PRIMARY KEY, expira_en INTEGER NOT NULL
+  )`);
+  await mockDb.runAsync('INSERT INTO usuarios (id, username, role) VALUES (?, ?, ?)', [1, 'empleado_test', 'empleado']);
 
   await mockDb.runAsync('INSERT INTO productos (id, nombre, precio) VALUES (?, ?, ?)', [PAN.id, 'Pan', PAN.precio]);
   await mockDb.runAsync('INSERT INTO clientes (id, nombre) VALUES (1, ?)', ['Cliente Uno']);

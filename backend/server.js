@@ -186,6 +186,17 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+// ─── Limpieza periodica de tokens revocados ────────────────────────
+// La tabla solo necesita guardar un token hasta que caduca por si solo. Sin
+// esta poda crece sin limite. Se ejecuta al arrancar y cada 6 horas; unref()
+// evita que el temporizador mantenga vivo el proceso.
+const { cleanup: limpiarTokensRevocados } = require('./utils/tokenBlacklist');
+const podar = () => limpiarTokensRevocados().catch(err =>
+  logger.error('Error limpiando tokens revocados:', err));
+podar();
+const intervaloPoda = setInterval(podar, 6 * 60 * 60 * 1000);
+if (intervaloPoda.unref) intervaloPoda.unref();
+
 // Verificar configuración de correo al iniciar
 verifyEmailConfig().then(result => {
   if (result.success) {
