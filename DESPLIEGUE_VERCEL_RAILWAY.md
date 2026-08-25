@@ -18,18 +18,26 @@ Navegador ──> panaderia.vercel.app        (React estático)
 
 1. Entra en [railway.app](https://railway.app) e inicia sesión con GitHub.
 2. **New Project** → **Provision PostgreSQL**.
-3. Abre el servicio Postgres → pestaña **Variables** → copia el valor de `DATABASE_URL`.
-   Tiene esta forma: `postgresql://postgres:CONTRASEÑA@HOST.proxy.rlwy.net:PUERTO/railway`
+3. Abre el servicio Postgres → pestaña **Variables**. Verás **dos** URLs distintas
+   y no son intercambiables:
 
-> Esa URL es la credencial de acceso a la base. No la subas a GitHub ni la pegues
-> en un chat público.
+| Variable | Host | Cuándo usarla |
+|---|---|---|
+| `DATABASE_URL` | `postgres.railway.internal` | Desde **dentro** de Railway (el backend desplegado). Es la red privada: más rápida y no gasta tráfico. |
+| `DATABASE_PUBLIC_URL` | `...proxy.rlwy.net` | Desde **fuera**: tu equipo, herramientas de escritorio, pruebas locales. |
+
+> Conectarse desde el PC con `DATABASE_URL` falla siempre: el host
+> `postgres.railway.internal` no existe fuera de la red de Railway.
+
+> Ambas URLs contienen la contraseña de la base. No las subas a GitHub. Si alguna
+> se filtra, se rota desde el propio panel de Postgres.
 
 **Antes de desplegar nada**, conviene probar el backend en local contra esa base
-para descartar incompatibilidades de SQL. Crea `backend/.env.local` y ejecútalo así:
+para descartar incompatibilidades de SQL. Usando la URL **pública**:
 
 ```bash
 cd backend
-DATABASE_URL="postgresql://..." DB_TYPE=postgresql PG_SSL=true npm start
+DATABASE_URL="postgresql://...proxy.rlwy.net:PUERTO/railway" DB_TYPE=postgresql PG_SSL=true npm start
 ```
 
 El servidor creará las tablas y mostrará por consola el usuario administrador
