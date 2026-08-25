@@ -1,0 +1,5 @@
+# El backend se despliega en Railway, no en Vercel.
+# Excluir api/ evita que Vercel lo detecte como Serverless Function y publique
+# un /api/* muerto (sin base de datos) junto al frontend.
+api/
+backend/

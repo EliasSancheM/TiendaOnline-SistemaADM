@@ -6,11 +6,12 @@ const db = require('../config/database');
 const logger = require('../config/logger');
 const { productoSchema, validate } = require('../middlewares/validatorMiddleware');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
+const { PRODUCTOS_DIR } = require('../config/uploads');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, path.join(__dirname, '../uploads/productos'));
+    cb(null, PRODUCTOS_DIR);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -41,7 +42,8 @@ router.get('/', async (req, res) => {
     const params = [];
 
     if (buscar) {
-      whereClause += ' AND (nombre LIKE ? OR descripcion LIKE ?)';
+      const like = db.helpers.like();
+      whereClause += ` AND (nombre ${like} ? OR descripcion ${like} ?)`;
       const search = `%${buscar}%`;
       params.push(search, search);
     }

@@ -16,7 +16,7 @@ Aplicación full-stack para administrar una panadería ("DondeLaEli"). Combina *
 | **Base de datos** | **SQLite** (desarrollo local) o **PostgreSQL** (producción) — adaptador dual automático |
 | **Pagos** | Transbank Webpay Plus (`transbank-sdk`) |
 | **Correo** | Nodemailer sobre Gmail (bienvenida, reset de contraseña, confirmación de pedido) |
-| **Deploy** | Preparado para Railway / Render (el backend sirve el build de React) |
+| **Deploy** | Frontend estático en Vercel + backend y PostgreSQL en Railway (ver [DESPLIEGUE_VERCEL_RAILWAY.md](DESPLIEGUE_VERCEL_RAILWAY.md)) |
 
 La base de datos se **selecciona automáticamente**: si existe la variable `DATABASE_URL` (típica de Railway/Heroku) o `DB_TYPE=postgresql`, usa PostgreSQL; de lo contrario, SQLite local. Las tablas se crean solas al arrancar.
 

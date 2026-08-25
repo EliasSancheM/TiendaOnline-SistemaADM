@@ -194,13 +194,14 @@ router.get('/reporte', authenticateToken, authorizeRole(['admin', 'contador']), 
     const currentMes = mes || (new Date().getMonth() + 1);
 
     // Rango [primer día del mes, primer día del mes siguiente).
-    // No se usa `fecha LIKE '2026-08-%'`: en PostgreSQL `fecha` es DATE y no
-    // existe el operador date ~~ text, así que la consulta abortaba. La
-    // comparación por rango funciona igual en ambos motores.
+    // NO usar `fecha LIKE '2026-08-%'`: en SQLite funciona porque las fechas se
+    // guardan como texto, pero en PostgreSQL `fecha` es DATE y LIKE sobre un DATE
+    // revienta con «operator does not exist: date ~~ unknown». La comparación por
+    // rango es válida en ambos motores.
     const mesFormatted = String(currentMes).padStart(2, '0');
     const desde = `${currentAnio}-${mesFormatted}-01`;
-    const siguienteMes = new Date(Number(currentAnio), Number(currentMes), 1);
-    const hasta = `${siguienteMes.getFullYear()}-${String(siguienteMes.getMonth() + 1).padStart(2, '0')}-01`;
+    const hasta = new Date(Date.UTC(Number(currentAnio), Number(currentMes), 1))
+      .toISOString().split('T')[0];
 
     const stats = await db.getAsync(
       `SELECT

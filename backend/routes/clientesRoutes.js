@@ -19,7 +19,8 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (
     const params = [];
 
     if (buscar) {
-      whereClause += ' AND (nombre LIKE ? OR email LIKE ? OR telefono LIKE ?)';
+      const like = db.helpers.like();
+      whereClause += ` AND (nombre ${like} ? OR email ${like} ? OR telefono ${like} ?)`;
       const search = `%${buscar}%`;
       params.push(search, search, search);
     }

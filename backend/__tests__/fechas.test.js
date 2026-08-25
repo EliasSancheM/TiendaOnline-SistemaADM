@@ -97,7 +97,8 @@ describe('GET /api/pedidos/dashboard-stats', () => {
     mockDb.helpers = {
       now: () => 'CURRENT_TIMESTAMP',
       date: (col) => `DATE(${col}, 'localtime')`,
-      groupConcat: (col) => `GROUP_CONCAT(${col})`
+      groupConcat: (col) => `GROUP_CONCAT(${col})`,
+      like: () => 'LIKE'
     };
 
     await mockDb.runAsync(`CREATE TABLE productos (

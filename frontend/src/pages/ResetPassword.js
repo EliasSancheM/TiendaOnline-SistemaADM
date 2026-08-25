@@ -13,6 +13,7 @@ import {
   IconButton,
 } from '@mui/material';
 import { Lock, Visibility, VisibilityOff, ArrowBack } from '@mui/icons-material';
+import { buildApiUrl } from '../config/api';
 
 const ResetPassword = () => {
   const navigate = useNavigate();
@@ -43,8 +44,7 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-      const response = await fetch(`${apiBaseUrl}/api/auth/reset-password`, {
+      const response = await fetch(buildApiUrl('/api/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password })
