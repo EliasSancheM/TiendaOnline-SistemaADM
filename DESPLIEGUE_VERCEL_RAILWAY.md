@@ -109,8 +109,17 @@ Contraseñas de aplicaciones**.
 
 1. Entra en [vercel.com](https://vercel.com) → **Add New** → **Project** → importa
    el mismo repositorio.
-2. **Framework Preset**: Other. No toques Build Command ni Output Directory:
-   los define `vercel.json` en la raíz del repositorio.
+2. **Framework Preset**: Other. No toques Build Command, Output Directory ni
+   Install Command: los define `vercel.json` en la raiz y aparecen ya rellenos
+   en gris. Los interruptores de la derecha son "Override"; si los activas, ese
+   valor queda congelado en el proyecto y deja de leerse del repositorio.
+
+   > `vercel.json` se valida contra un esquema estricto que **no admite claves
+   > propias**: una clave `comment` hace fallar el despliegue con
+   > *"should NOT have additional property"*. Por eso la explicacion de que
+   > Vercel solo sirve el frontend estatico, y de que alcanza al backend via
+   > `REACT_APP_API_URL` (inyectada en tiempo de BUILD), vive aqui y no en el
+   > propio fichero.
 3. **Environment Variables**, antes del primer despliegue:
 
 | Variable | Valor |
