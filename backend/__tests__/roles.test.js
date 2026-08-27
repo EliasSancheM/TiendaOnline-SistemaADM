@@ -69,7 +69,7 @@ beforeAll(async () => {
   };
   mockDb.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
-    date: (col) => `DATE(${col}, 'localtime')`,
+    date: (col) => `DATE(${col})`,
     groupConcat: (col) => `GROUP_CONCAT(${col})`,
     like: () => 'LIKE'
   };
@@ -111,7 +111,7 @@ beforeAll(async () => {
   await mockDb.runAsync(`CREATE TABLE usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
-    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1, sesiones_validas_desde INTEGER DEFAULT 0,
     ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
   )`);
   await mockDb.runAsync(`CREATE TABLE tokens_revocados (

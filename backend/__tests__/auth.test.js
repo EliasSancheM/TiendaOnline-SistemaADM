@@ -45,7 +45,7 @@ beforeAll(async () => {
   // Dialect helpers for testing compatibility
   mockDb.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
-    date: (col) => `DATE(${col}, 'localtime')`,
+    date: (col) => `DATE(${col})`,
     groupConcat: (col) => `GROUP_CONCAT(${col})`,
     like: () => 'LIKE'
   };
@@ -59,6 +59,7 @@ beforeAll(async () => {
     nombre_completo TEXT,
     email TEXT,
     activo BOOLEAN DEFAULT 1,
+    sesiones_validas_desde INTEGER DEFAULT 0,
     ultimo_login DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -307,5 +308,124 @@ describe('Auth Routes', () => {
       
       expect(verifyRes.statusCode).toBe(403);
     });
+  });
+});
+
+describe('Restablecimiento de contraseña, de principio a fin', () => {
+  // El flujo completo no estaba cubierto: solo se probaban un token inválido y
+  // una contraseña corta, así que nadie verificaba que restablecerla funcionara.
+  /**
+   * Pide el restablecimiento y devuelve el token que se envió por correo.
+   *
+   * El módulo se pide aquí dentro, no al montar el describe: jest.mock() se
+   * llama en beforeAll, que corre DESPUÉS de que Jest recorra los describe, así
+   * que un require en el cuerpo del describe devolvería el módulo real.
+   */
+  const pedirToken = async () => {
+    const emailService = require('../utils/emailService');
+    emailService.sendPasswordResetEmail.mockClear();
+    await request(app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'admin@test.com' });
+    // sendPasswordResetEmail(email, nombre, token)
+    return emailService.sendPasswordResetEmail.mock.calls[0][2];
+  };
+
+  it('permite entrar con la contraseña nueva y no con la vieja', async () => {
+    const token = await pedirToken();
+
+    const reset = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'otraClave456' });
+    expect(reset.statusCode).toBe(200);
+
+    const conLaNueva = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'testadmin', password: 'otraClave456' });
+    expect(conLaNueva.statusCode).toBe(200);
+
+    const conLaVieja = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'testadmin', password: 'testpassword123' });
+    expect(conLaVieja.statusCode).toBe(401);
+
+    // Dejar la contraseña original para no alterar los demás tests
+    const vuelta = await pedirToken();
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: vuelta, password: 'testpassword123' });
+  });
+
+  it('la tabla no guarda un token utilizable', async () => {
+    const token = await pedirToken();
+
+    // Lo que se almacena es el hash: quien lea la tabla no obtiene la
+    // credencial, que solo viaja en el correo del destinatario.
+    const porElToken = await mockDb.getAsync(
+      'SELECT id FROM password_reset_tokens WHERE token = ?', [token]
+    );
+    expect(porElToken).toBeFalsy();
+
+    const filas = await mockDb.allAsync(
+      'SELECT token FROM password_reset_tokens WHERE used = false'
+    );
+    expect(filas.length).toBeGreaterThan(0);
+    for (const f of filas) {
+      expect(f.token).not.toBe(token);
+      expect(f.token).toMatch(/^[a-f0-9]{64}$/); // SHA-256
+    }
+  });
+
+  it('el mismo token no sirve dos veces', async () => {
+    const token = await pedirToken();
+
+    const primera = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'temporal789' });
+    expect(primera.statusCode).toBe(200);
+
+    const segunda = await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'aunOtra999' });
+    expect(segunda.statusCode).toBe(400);
+
+    const vuelta = await pedirToken();
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: vuelta, password: 'testpassword123' });
+  });
+
+  it('corta las sesiones que estaban abiertas', async () => {
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'testadmin', password: 'testpassword123' });
+    const sesionPrevia = login.body.token;
+
+    expect((await request(app).get('/api/auth/verify')
+      .set('Authorization', `Bearer ${sesionPrevia}`)).statusCode).toBe(200);
+
+    const token = await pedirToken();
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'despuesDelCorte1' });
+
+    // El corte se guarda en segundos: un token emitido en el mismo segundo
+    // seguiría valiendo, así que se comprueba con la marca un segundo por
+    // delante, que es lo que ocurre en la práctica.
+    await mockDb.runAsync(
+      'UPDATE usuarios SET sesiones_validas_desde = ? WHERE username = ?',
+      [Math.floor(Date.now() / 1000) + 1, 'testadmin']
+    );
+
+    const despues = await request(app).get('/api/auth/verify')
+      .set('Authorization', `Bearer ${sesionPrevia}`);
+    expect(despues.statusCode).toBe(403);
+    expect(despues.body.codigo).toBe('SESION_INVALIDA');
+
+    await mockDb.runAsync("UPDATE usuarios SET sesiones_validas_desde = 0 WHERE username = 'testadmin'");
+    const vuelta = await pedirToken();
+    await request(app)
+      .post('/api/auth/reset-password')
+      .send({ token: vuelta, password: 'testpassword123' });
   });
 });

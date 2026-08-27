@@ -32,12 +32,13 @@ const authenticateToken = (req, res, next) => {
   jwt.verify(token, process.env.JWT_SECRET, async (err, payload) => {
     if (err) {
       logger.warn(`Token inválido desde IP: ${req.ip}`);
-      return res.status(403).json({ error: 'Token inválido o expirado' });
+      return res.status(403).json({ error: 'Token inválido o expirado', codigo: 'SESION_INVALIDA' });
     }
 
     try {
       const fila = await db.getAsync(
         `SELECT u.id, u.username, u.role, u.activo, u.nombre_completo,
+                u.sesiones_validas_desde,
                 (SELECT 1 FROM tokens_revocados
                   WHERE token_hash = ? AND expira_en > ?) AS revocado
            FROM usuarios u
@@ -47,17 +48,29 @@ const authenticateToken = (req, res, next) => {
 
       if (fila && fila.revocado) {
         logger.warn(`Token revocado usado desde IP: ${req.ip}`);
-        return res.status(403).json({ error: 'Sesión cerrada. Inicia sesión nuevamente.' });
+        return res.status(403).json({ error: 'Sesión cerrada. Inicia sesión nuevamente.', codigo: 'SESION_INVALIDA' });
       }
 
       if (!fila) {
         logger.warn(`Token de un usuario inexistente (id ${payload.id}) desde IP: ${req.ip}`);
-        return res.status(403).json({ error: 'La cuenta ya no existe. Inicia sesión nuevamente.' });
+        return res.status(403).json({ error: 'La cuenta ya no existe. Inicia sesión nuevamente.', codigo: 'SESION_INVALIDA' });
       }
 
       if (!fila.activo) {
         logger.warn(`Acceso de cuenta desactivada: ${fila.username} desde IP: ${req.ip}`);
-        return res.status(403).json({ error: 'Tu cuenta está desactivada. Contacta al administrador.' });
+        return res.status(403).json({ error: 'Tu cuenta está desactivada. Contacta al administrador.', codigo: 'SESION_INVALIDA' });
+      }
+
+      // Cambiar la contraseña invalida las sesiones abiertas antes de ese
+      // momento. Sin esto, restablecerla no servía para echar a quien hubiera
+      // entrado con la contraseña antigua: su token seguía siendo válido hasta
+      // 24 horas después, que es justo el caso para el que existe la función.
+      if (payload.iat && Number(fila.sesiones_validas_desde) > payload.iat) {
+        logger.warn(`Token anterior al cambio de contraseña de ${fila.username} desde IP: ${req.ip}`);
+        return res.status(403).json({
+          error: 'Tu contraseña cambió. Inicia sesión nuevamente.',
+          codigo: 'SESION_INVALIDA'
+        });
       }
 
       if (fila.role !== payload.role) {
@@ -65,7 +78,7 @@ const authenticateToken = (req, res, next) => {
           `Rol cambiado para ${fila.username} (token: ${payload.role}, actual: ${fila.role}). ` +
           'Se rechaza el token desde IP: ' + req.ip
         );
-        return res.status(403).json({ error: 'Tus permisos cambiaron. Inicia sesión nuevamente.' });
+        return res.status(403).json({ error: 'Tus permisos cambiaron. Inicia sesión nuevamente.', codigo: 'SESION_INVALIDA' });
       }
 
       // El rol viene de la base de datos, no del token: es el dato autoritativo.

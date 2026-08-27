@@ -53,7 +53,7 @@ beforeAll(async () => {
   };
   mockDb.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
-    date: (col) => `DATE(${col}, 'localtime')`,
+    date: (col) => `DATE(${col})`,
     groupConcat: (col) => `GROUP_CONCAT(${col})`,
     like: () => 'LIKE'
   };
@@ -61,7 +61,7 @@ beforeAll(async () => {
   await mockDb.runAsync(`CREATE TABLE usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL DEFAULT 'x', role TEXT NOT NULL,
-    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1,
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1, sesiones_validas_desde INTEGER DEFAULT 0,
     ultimo_login DATETIME, created_at DATETIME, updated_at DATETIME
   )`);
   await mockDb.runAsync(`CREATE TABLE tokens_revocados (
@@ -205,5 +205,86 @@ describe('Limpieza de tokens caducados', () => {
     );
 
     expect(await blacklist.isBlacklisted(t)).toBe(false);
+  });
+});
+
+describe('Cambio de contraseña', () => {
+  afterEach(async () => {
+    await mockDb.runAsync('UPDATE usuarios SET sesiones_validas_desde = 0');
+  });
+
+  it('restablecerla echa a las sesiones que ya estaban abiertas', async () => {
+    // Este es el caso para el que existe la función: alguien más pudo haber
+    // entrado con la contraseña antigua. Antes su token seguía valiendo hasta
+    // 24 horas después, así que restablecerla no lo expulsaba de nada.
+    const tokenDelIntruso = token(1, 'admin');
+    expect((await verificar(tokenDelIntruso)).statusCode).toBe(200);
+
+    // El dueño de la cuenta restablece su contraseña un segundo más tarde.
+    await mockDb.runAsync(
+      'UPDATE usuarios SET sesiones_validas_desde = ? WHERE id = 1',
+      [Math.floor(Date.now() / 1000) + 1]
+    );
+
+    const res = await verificar(tokenDelIntruso);
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toMatch(/contraseña cambió/i);
+  });
+
+  it('la sesión que se abre después del cambio sí vale', async () => {
+    await mockDb.runAsync(
+      'UPDATE usuarios SET sesiones_validas_desde = ? WHERE id = 1',
+      [Math.floor(Date.now() / 1000) - 60]
+    );
+
+    expect((await verificar(token(1, 'admin'))).statusCode).toBe(200);
+  });
+
+  it('no afecta a los demás usuarios', async () => {
+    await mockDb.runAsync(
+      'UPDATE usuarios SET sesiones_validas_desde = ? WHERE id = 1',
+      [Math.floor(Date.now() / 1000) + 1]
+    );
+
+    // El usuario 3 no tocó su contraseña: su sesión sigue en pie.
+    expect((await verificar(token(3, 'empleado'))).statusCode).toBe(200);
+  });
+});
+
+describe('Distinguir "sesión inválida" de "sin permiso"', () => {
+  // El frontend cierra la sesión al recibir un 403, pero el backend usa ese
+  // código para dos cosas distintas. Sin una marca, a un empleado que pulsaba
+  // una acción reservada al administrador se le cerraba la sesión y aparecía en
+  // la pantalla de login, como si el sistema se hubiera roto.
+  it('los 403 de sesión llevan el código que ordena volver a entrar', async () => {
+    const casos = [
+      ['token de un usuario borrado', token(999, 'admin')],
+      ['cuenta desactivada', token(2, 'empleado')],
+      ['rol que ya no coincide', token(3, 'admin')]
+    ];
+
+    for (const [caso, t] of casos) {
+      const res = await verificar(t);
+      expect(res.statusCode).toBe(403);
+      expect([caso, res.body.codigo]).toEqual([caso, 'SESION_INVALIDA']);
+    }
+  });
+
+  it('un token con la firma rota también', async () => {
+    const res = await verificar('esto.no.es.un.token');
+    expect(res.statusCode).toBe(403);
+    expect(res.body.codigo).toBe('SESION_INVALIDA');
+  });
+
+  it('la falta de permisos NO lleva ese código', async () => {
+    // /api/auth/register está reservado a admin; el usuario 3 es empleado.
+    const res = await request(app)
+      .post('/api/auth/register')
+      .set('Authorization', `Bearer ${token(3, 'empleado')}`)
+      .send({ username: 'nuevo', password: 'Clave1234', nombre_completo: 'Nuevo', email: 'n@ejemplo.cl' });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.codigo).toBeUndefined();
+    expect(res.body.error).toMatch(/permisos/i);
   });
 });

@@ -2,8 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const logger = require('../config/logger');
+const { paginacion, meta } = require('../utils/paginacion');
 const { clienteSchema, validate } = require('../middlewares/validatorMiddleware');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
+const { idNumerico } = require('../middlewares/idMiddleware');
+const { esViolacionDeReferencia } = require('../utils/erroresDb');
 
 // GET /api/clientes — Listar clientes con paginación
 // Solo admin y empleado: expone datos personales completos (email, teléfono,
@@ -11,9 +14,8 @@ const { authenticateToken, authorizeRole } = require('../middlewares/authMiddlew
 // GET /api/facturas/clientes-facturables, que devuelve el mínimo necesario.
 router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
-    const { page = 1, limit = 50, buscar } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit)));
+    const { buscar } = req.query;
+    const { limit: parsedLimit, offset, page: paginaActual } = paginacion(req.query);
 
     let whereClause = '1=1';
     const params = [];
@@ -37,12 +39,7 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (
 
     res.json({
       data: rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parsedLimit,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / parsedLimit)
-      }
+      pagination: meta({ page: paginaActual, limit: parsedLimit }, countRow.total)
     });
   } catch (err) {
     logger.error('Error listando clientes:', err);
@@ -51,7 +48,7 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (
 });
 
 // GET /api/clientes/:id — Detalle de un cliente
-router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
+router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), idNumerico, async (req, res) => {
   try {
     const row = await db.getAsync('SELECT * FROM clientes WHERE id = ?', [req.params.id]);
     if (!row) {
@@ -81,7 +78,7 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), valida
 });
 
 // PUT /api/clientes/:id — Actualizar cliente
-router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), validate(clienteSchema), async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), idNumerico, validate(clienteSchema), async (req, res) => {
   try {
     const { nombre, telefono, direccion, email, rut, giro } = req.body;
     const result = await db.runAsync(
@@ -100,7 +97,7 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
 });
 
 // DELETE /api/clientes/:id — Eliminar cliente (solo admin)
-router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['admin']), idNumerico, async (req, res) => {
   try {
     const result = await db.runAsync('DELETE FROM clientes WHERE id = ?', [req.params.id]);
     if (result.changes === 0) {
@@ -109,6 +106,13 @@ router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, r
     logger.info(`Cliente eliminado (ID: ${req.params.id}) por usuario: ${req.user.username}`);
     res.json({ message: 'Cliente eliminado' });
   } catch (err) {
+    // El cliente tiene pedidos o facturas: la base lo impide. No es una
+    // avería, es una acción que no se puede completar, y hay que decir por qué.
+    if (esViolacionDeReferencia(err)) {
+      return res.status(409).json({
+        error: 'No se puede eliminar el cliente porque tiene pedidos o facturas asociados. Elimina primero esos documentos.'
+      });
+    }
     logger.error('Error eliminando cliente:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }

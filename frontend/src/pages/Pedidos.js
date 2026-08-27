@@ -43,6 +43,7 @@ import {
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseFechaLocal, soloFecha, formatFecha } from '../utils/fechas';
 
 import {
   printViaIframe,
@@ -262,12 +263,12 @@ function Pedidos() {
       const pedidosFiltrados = pedidos.filter(pedido => {
         if (!pedido.fecha) return false;
         
-        const fechaPedidoDate = new Date(pedido.fecha);
-        if (isNaN(fechaPedidoDate)) return false;
+        const fechaPedidoDate = parseFechaLocal(pedido.fecha);
+        if (!fechaPedidoDate) return false;
         
         if (filtroFecha) {
-          const fechaPedido = format(fechaPedidoDate, 'yyyy-MM-dd');
-          const fechaFiltro = format(new Date(filtroFecha), 'yyyy-MM-dd');
+          const fechaPedido = soloFecha(fechaPedidoDate);
+          const fechaFiltro = soloFecha(filtroFecha);
           if (fechaPedido !== fechaFiltro) return false;
         }
         
@@ -345,7 +346,7 @@ function Pedidos() {
     try {
       const nuevoPedido = {
         cliente_id: pedido.cliente_id,
-        fecha: new Date().toISOString(),
+        fecha: soloFecha(new Date()),
         periodo: pedido.periodo,
         estado: 'pendiente',
         notas: `Repetición del pedido #${pedido.id}`,
@@ -601,13 +602,7 @@ function Pedidos() {
                 </TableCell>
                 <TableCell>{pedido.cliente_nombre}</TableCell>
                 <TableCell>
-                  {(() => {
-                    try {
-                      return format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es });
-                    } catch (e) {
-                      return pedido.fecha;
-                    }
-                  })()}
+                  {formatFecha(pedido.fecha)}
                 </TableCell>
                 <TableCell>
                   {pedido.periodo === 'mañana' ? 'Mañana' : 'Tarde'}

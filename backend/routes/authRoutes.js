@@ -25,6 +25,28 @@ const { addToken: blacklistToken } = require('../utils/tokenBlacklist');
 //
 // COOKIE_SAMESITE permite forzar 'lax' si algún día el frontend y el backend
 // comparten dominio, que es la opción más segura cuando es posible.
+// Hash de descarte para igualar el tiempo de respuesta del login.
+//
+// Si el usuario no existe se contestaba de inmediato, mientras que con un
+// usuario real y contraseña incorrecta había que esperar a bcrypt (~200 ms a
+// coste 12). Esa diferencia, medible desde fuera, permite ir probando nombres
+// hasta descubrir cuáles existen, que es el primer paso de un ataque dirigido.
+// Comparando siempre contra algo, ambos caminos tardan lo mismo.
+/**
+ * Los tokens de restablecimiento se guardan cifrados de un solo sentido.
+ *
+ * Se enviaban y almacenaban en claro, así que quien pudiera leer la tabla
+ * —una copia de seguridad, un volcado, la consola del proveedor— obtenía
+ * credenciales listas para usar: con ese token se cambia la contraseña de
+ * cualquier cuenta sin conocer la actual. Guardando solo el SHA-256, la tabla
+ * deja de contener nada aprovechable; el token de verdad viaja únicamente en el
+ * correo del destinatario. Es el mismo criterio que ya se aplica a los tokens
+ * revocados (ver utils/tokenBlacklist.js).
+ */
+const hashResetToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
+
+const HASH_DE_DESCARTE = bcrypt.hashSync('ninguna cuenta usa esta contraseña', 12);
+
 const getCookieOptions = () => {
   const sameSite = process.env.COOKIE_SAMESITE
     || (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
@@ -50,6 +72,8 @@ router.post('/login', validate(loginSchema), async (req, res) => {
     );
     
     if (!user) {
+      // Se compara igualmente para no delatar por tiempo que la cuenta no existe.
+      await bcrypt.compare(password, HASH_DE_DESCARTE);
       logger.warn(`Intento de login fallido para usuario: ${username} desde IP: ${req.ip}`);
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
@@ -235,7 +259,7 @@ router.post('/forgot-password', async (req, res) => {
     // Store new token
     await db.runAsync(
       'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)',
-      [user.id, resetToken, expiresAt]
+      [user.id, hashResetToken(resetToken), expiresAt]
     );
     
     // Send reset email
@@ -267,7 +291,7 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     // Find valid token
     const resetEntry = await db.getAsync(
       'SELECT * FROM password_reset_tokens WHERE token = ? AND used = false',
-      [token]
+      [hashResetToken(token)]
     );
     
     if (!resetEntry) {
@@ -283,10 +307,15 @@ router.post('/reset-password', validate(resetPasswordSchema), async (req, res) =
     // Hash new password
     const hashedPassword = await bcrypt.hash(password, 12);
     
-    // Update user password
+    // Update user password.
+    // sesiones_validas_desde corta en seco las sesiones abiertas: cualquier token
+    // emitido antes de este instante deja de valer (ver authMiddleware.js).
+    // Restablecer la contraseña se pide, casi siempre, porque alguien más pudo
+    // haber entrado; dejar viva su sesión durante 24 h vaciaba de sentido la
+    // operación.
     await db.runAsync(
-      `UPDATE usuarios SET password_hash = ?, updated_at = ${db.helpers.now()} WHERE id = ?`,
-      [hashedPassword, resetEntry.user_id]
+      `UPDATE usuarios SET password_hash = ?, sesiones_validas_desde = ?, updated_at = ${db.helpers.now()} WHERE id = ?`,
+      [hashedPassword, Math.floor(Date.now() / 1000), resetEntry.user_id]
     );
     
     // Mark token as used

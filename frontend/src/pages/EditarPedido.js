@@ -36,6 +36,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { parseFechaLocal } from '../utils/fechas';
 
 function EditarPedido() {
   const { id } = useParams();
@@ -82,7 +83,7 @@ function EditarPedido() {
       // Formatear la fecha correctamente
       const pedidoFormateado = {
         ...pedidoData,
-        fecha: new Date(pedidoData.fecha),
+        fecha: parseFechaLocal(pedidoData.fecha),
       };
       
       setPedido(pedidoFormateado);

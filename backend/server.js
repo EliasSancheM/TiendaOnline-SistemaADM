@@ -182,6 +182,14 @@ if (process.env.NODE_ENV === 'production' && !process.env.VERCEL &&
 
 // Manejador global de errores
 app.use((err, req, res, next) => {
+  // Un origen no autorizado no es un fallo del servidor: devolver 500 hacía
+  // pensar que la API estaba caída cuando en realidad faltaba añadir el dominio
+  // a CORS_ORIGIN, que es justo lo que hay que saber para arreglarlo.
+  if (err && /No permitido por CORS/.test(err.message || '')) {
+    logger.warn(`Origen bloqueado por CORS: ${req.headers.origin}`);
+    return res.status(403).json({ error: 'Origen no autorizado' });
+  }
+
   logger.error('Error no manejado:', err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
@@ -193,6 +201,17 @@ app.use((err, req, res, next) => {
 const { bootstrapAdmin } = require('./utils/bootstrapAdmin');
 bootstrapAdmin().catch(err =>
   logger.error('Error en el alta de rescate del administrador:', err));
+
+// ─── Pedidos que se quedaron esperando un pago ─────────────────────
+// Un carrito abandonado en la pasarela de Webpay deja el pedido en
+// 'pendiente_pago' para siempre: el retorno de Transbank nunca llega y ese
+// estado no admite cambios desde el panel. Se revisan al arrancar y cada hora.
+const { caducarPendientesDePago } = require('./utils/pedidosCaducados');
+const barrerPagosPendientes = () => caducarPendientesDePago().catch(err =>
+  logger.error('Error cancelando pedidos sin pago confirmado:', err));
+barrerPagosPendientes();
+const intervaloPagos = setInterval(barrerPagosPendientes, 60 * 60 * 1000);
+if (intervaloPagos.unref) intervaloPagos.unref();
 
 // ─── Limpieza periodica de tokens revocados ────────────────────────
 // La tabla solo necesita guardar un token hasta que caduca por si solo. Sin

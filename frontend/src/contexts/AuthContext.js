@@ -96,10 +96,32 @@ export const AuthProvider = ({ children }) => {
       credentials: 'include'
     });
 
-    // If session expired, auto-logout
-    if (response.status === 401 || response.status === 403) {
+    // Cerrar la sesión SOLO cuando el problema es la sesión.
+    //
+    // Antes se cerraba ante cualquier 403, y el backend usa ese código para dos
+    // cosas muy distintas: "tu token ya no vale" y "no tienes permiso para esta
+    // acción". Resultado: a un empleado que pulsaba Eliminar en un producto —una
+    // acción reservada al administrador— se le cerraba la sesión y aparecía en la
+    // pantalla de login, como si el sistema se hubiera roto. Ahora el backend
+    // marca los primeros con codigo: SESION_INVALIDA y el resto se devuelve al
+    // llamador para que muestre el mensaje que corresponde.
+    if (response.status === 401) {
       setUser(null);
       throw new Error('Sesión expirada');
+    }
+
+    if (response.status === 403) {
+      // clone() para no consumir el cuerpo: quien llamó todavía tiene que leerlo.
+      let codigo = null;
+      try {
+        codigo = (await response.clone().json()).codigo;
+      } catch (e) {
+        // Respuesta sin cuerpo JSON: se trata como falta de permisos.
+      }
+      if (codigo === 'SESION_INVALIDA') {
+        setUser(null);
+        throw new Error('Sesión expirada');
+      }
     }
 
     return response;

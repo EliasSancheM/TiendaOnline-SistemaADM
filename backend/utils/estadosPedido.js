@@ -55,8 +55,29 @@ function validarTransicion(actual, nuevo) {
   return `No se puede pasar un pedido de "${actual}" a "${nuevo}" (permitidos: ${permitidos.join(', ')})`;
 }
 
+/**
+ * Estados que cuentan como venta real en los informes.
+ *
+ * Quedan fuera:
+ *   - 'cancelado': el pedido no se sirvio, y si hubo cobro se devolvio.
+ *   - 'pendiente_pago': nadie llego a pagarlo. Cada carrito abandonado en
+ *     Webpay deja uno, asi que son frecuentes.
+ *
+ * Antes el dashboard sumaba TODOS los pedidos sin mirar el estado, de modo que
+ * los abandonos y las anulaciones inflaban las ventas del dia y del mes.
+ */
+const ESTADOS_COMPUTABLES = ['pendiente', 'en_proceso', 'completado'];
+
+/** Fragmento SQL reutilizable: `estado IN (?, ?, ?)` con sus parametros. */
+const filtroComputables = (columna = 'estado') => ({
+  sql: `${columna} IN (${ESTADOS_COMPUTABLES.map(() => '?').join(', ')})`,
+  params: [...ESTADOS_COMPUTABLES]
+});
+
 module.exports = {
   ESTADOS,
+  ESTADOS_COMPUTABLES,
+  filtroComputables,
   TRANSICIONES,
   validarTransicion
 };

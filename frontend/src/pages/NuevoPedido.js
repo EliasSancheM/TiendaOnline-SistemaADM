@@ -36,6 +36,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { soloFecha } from '../utils/fechas';
 
 function NuevoPedido() {
   const navigate = useNavigate();
@@ -255,7 +256,7 @@ function NuevoPedido() {
     try {
       const nuevoPedido = {
         ...pedido,
-        fecha: pedido.fecha.toISOString(),
+        fecha: soloFecha(pedido.fecha),
         total: calcularTotal(),
       };
 

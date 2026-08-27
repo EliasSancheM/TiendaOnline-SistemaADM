@@ -11,8 +11,7 @@ import {
   Divider,
   Paper,
 } from '@mui/material';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
+import { formatFecha } from '../utils/fechas';
 
 // Plantilla para repartidores
 export const PlantillaRepartidor = ({ pedido }) => {
@@ -45,7 +44,7 @@ export const PlantillaRepartidor = ({ pedido }) => {
               Fecha de Entrega:
             </Typography>
             <Typography variant="h6">
-              {format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}
+              {formatFecha(pedido.fecha)}
             </Typography>
           </Box>
         </Box>
@@ -183,7 +182,7 @@ export const PlantillaPreparador = ({ pedido }) => {
               Fecha de Preparación:
             </Typography>
             <Typography variant="body1">
-              {format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}
+              {formatFecha(pedido.fecha)}
             </Typography>
           </Box>
         </Box>

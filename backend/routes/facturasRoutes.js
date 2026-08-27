@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const logger = require('../config/logger');
+const { paginacion, meta } = require('../utils/paginacion');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
+const { idNumerico } = require('../middlewares/idMiddleware');
 const { facturaSchema, validate } = require('../middlewares/validatorMiddleware');
 const billingService = require('../services/billingService');
 
@@ -150,9 +152,8 @@ router.get('/clientes-facturables', authenticateToken, authorizeRole(['admin', '
 // GET /api/facturas — Listar facturas con filtros y paginación
 router.get('/', authenticateToken, authorizeRole(['admin', 'contador']), async (req, res) => {
   try {
-    const { fecha, estado, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit)));
+    const { fecha, estado } = req.query;
+    const { limit: parsedLimit, offset, page: paginaActual } = paginacion(req.query);
 
     let whereClause = '1=1';
     const params = [];
@@ -195,12 +196,7 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'contador']), async (
 
     res.json({
       data: facturas,
-      pagination: {
-        page: parseInt(page),
-        limit: parsedLimit,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / parsedLimit)
-      }
+      pagination: meta({ page: paginaActual, limit: parsedLimit }, countRow.total)
     });
   } catch (err) {
     logger.error('Error listando facturas:', err);
@@ -257,7 +253,7 @@ router.get('/reporte', authenticateToken, authorizeRole(['admin', 'contador']), 
 });
 
 // GET /api/facturas/:id — Detalle de una factura
-router.get('/:id', authenticateToken, authorizeRole(['admin', 'contador']), async (req, res) => {
+router.get('/:id', authenticateToken, authorizeRole(['admin', 'contador']), idNumerico, async (req, res) => {
   try {
     const factura = await db.getAsync(
       `SELECT f.*, c.nombre as cliente_nombre, c.email as cliente_email,
@@ -334,7 +330,7 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'contador']), valida
 });
 
 // PUT /api/facturas/:id — Actualizar factura (transacción)
-router.put('/:id', authenticateToken, authorizeRole(['admin', 'contador']), validate(facturaSchema), async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['admin', 'contador']), idNumerico, validate(facturaSchema), async (req, res) => {
   const { id } = req.params;
   const { cliente_id, pedidos_ids, numero_factura, fecha, estado, notas } = req.body;
 
@@ -387,7 +383,7 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'contador']), vali
 });
 
 // DELETE /api/facturas/:id — Eliminar factura (CASCADE elimina relaciones)
-router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['admin']), idNumerico, async (req, res) => {
   try {
     const result = await db.runAsync('DELETE FROM facturas WHERE id = ?', [req.params.id]);
 
@@ -404,7 +400,7 @@ router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, r
 });
 
 // POST /api/facturas/:id/subir-sii — Endpoint placeholder para conexión con SII
-router.post('/:id/subir-sii', authenticateToken, authorizeRole(['admin', 'contador']), async (req, res) => {
+router.post('/:id/subir-sii', authenticateToken, authorizeRole(['admin', 'contador']), idNumerico, async (req, res) => {
   try {
     const { id } = req.params;
     

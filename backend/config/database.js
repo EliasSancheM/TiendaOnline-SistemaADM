@@ -62,8 +62,23 @@ function initSQLite() {
   // Dialect helpers
   conn.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
-    date: (col) => `DATE(${col}, 'localtime')`,
+    // DATE() a secas, SIN el modificador 'localtime'.
+    //
+    // 'localtime' interpreta el valor como si fuera UTC y le aplica el desfase
+    // de la zona. Eso tiene sentido para una marca de tiempo, pero `fecha` es
+    // una fecha de calendario: guarda '2026-08-27', sin hora. Al convertirla,
+    // SQLite la trataba como las 00:00 UTC y en Chile (UTC-4) devolvía
+    // '2026-08-26'. Comprobado.
+    //
+    // Consecuencia: filtrar los pedidos de un día no devolvía NINGUNO, porque
+    // se comparaba el día anterior con el que pedía el usuario. En producción
+    // no se veía —PostgreSQL usa `::date`, que sí es correcto—, así que los dos
+    // motores daban resultados distintos con los mismos datos.
+    date: (col) => `DATE(${col})`,
     groupConcat: (col) => `GROUP_CONCAT(${col})`,
+    // Momento de hace N minutos, en la base de tiempo del propio motor: así no
+    // hay que suponer en qué zona horaria guarda cada uno sus marcas de tiempo.
+    haceMinutos: (min) => `datetime('now', '-${Number(min)} minutes')`,
     // LIKE en SQLite ya ignora mayúsculas/minúsculas para ASCII; en PostgreSQL no.
     like: () => 'LIKE'
   };
@@ -144,8 +159,9 @@ function initPostgreSQL() {
   // Dialect helpers
   const helpers = {
     now: () => DB_TYPE === 'sqlite' ? 'CURRENT_TIMESTAMP' : 'NOW()',
-    date: (col) => DB_TYPE === 'sqlite' ? `DATE(${col}, 'localtime')` : `${col}::date`,
+    date: (col) => DB_TYPE === 'sqlite' ? `DATE(${col})` : `${col}::date`,
     groupConcat: (col) => DB_TYPE === 'sqlite' ? `GROUP_CONCAT(${col})` : `STRING_AGG(${col}::text, ',')`,
+    haceMinutos: (min) => `NOW() - INTERVAL '${Number(min)} minutes'`,
     // ILIKE para que buscar "pan" encuentre "Pan Amasado", igual que hace SQLite.
     like: () => 'ILIKE'
   };
@@ -283,10 +299,16 @@ function createTables(conn) {
       nombre_completo TEXT,
       email TEXT,
       activo BOOLEAN DEFAULT 1,
+      sesiones_validas_desde INTEGER DEFAULT 0,
       ultimo_login DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+    )`, () => {
+      // Bases creadas antes de que existiera el corte de sesiones por cambio de
+      // contraseña. SQLite no admite ADD COLUMN IF NOT EXISTS: se ignora el
+      // error de columna duplicada.
+      conn.run(`ALTER TABLE usuarios ADD COLUMN sesiones_validas_desde INTEGER DEFAULT 0`, () => {});
+    });
 
     conn.run(`CREATE TABLE IF NOT EXISTS productos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -433,10 +455,13 @@ async function createTablesPostgreSQL(pool) {
       nombre_completo TEXT,
       email TEXT,
       activo BOOLEAN DEFAULT true,
+      sesiones_validas_desde BIGINT DEFAULT 0,
       ultimo_login TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`);
+
+    await client.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS sesiones_validas_desde BIGINT DEFAULT 0`);
 
     await client.query(`CREATE TABLE IF NOT EXISTS productos (
       id SERIAL PRIMARY KEY,

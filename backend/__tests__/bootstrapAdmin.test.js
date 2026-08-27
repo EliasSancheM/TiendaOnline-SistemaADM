@@ -36,7 +36,7 @@ beforeAll(async () => {
   await mockDb.runAsync(`CREATE TABLE usuarios (
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL, role TEXT NOT NULL,
-    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1
+    nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1, sesiones_validas_desde INTEGER DEFAULT 0
   )`);
 
   jest.mock('../config/database', () => mockDb);
@@ -148,7 +148,7 @@ describe('Validación', () => {
     await mockDb.runAsync(`CREATE TABLE usuarios (
       id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL, role TEXT NOT NULL,
-      nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1
+      nombre_completo TEXT, email TEXT, activo BOOLEAN DEFAULT 1, sesiones_validas_desde INTEGER DEFAULT 0
     )`);
   });
 });

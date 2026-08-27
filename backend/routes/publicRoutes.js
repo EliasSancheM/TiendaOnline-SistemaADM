@@ -55,6 +55,15 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
 
     if (existingCliente) {
       clienteId = existingCliente.id;
+      // Los datos del formulario son los de ESTE pedido y mandan sobre lo que
+      // hubiera guardado de una compra anterior. Antes se descartaban en
+      // silencio: quien ya había comprado y se mudaba escribía su dirección
+      // nueva, veía el pedido confirmado, y el reparto salía igualmente a la
+      // dirección vieja, porque el panel solo mira la ficha del cliente.
+      await db.runAsync(
+        'UPDATE clientes SET nombre = ?, telefono = ?, direccion = ? WHERE id = ?',
+        [cliente.nombre, cliente.telefono, cliente.direccion, clienteId]
+      );
     } else {
       const result = await db.runAsync(
         'INSERT INTO clientes (nombre, email, telefono, direccion) VALUES (?, ?, ?, ?)',

@@ -24,6 +24,7 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { formatFecha } from '../utils/fechas';
 
 function DetalleCliente() {
   const { id } = useParams();
@@ -226,7 +227,7 @@ function DetalleCliente() {
                       <ListItemText
                         primary={
                           <Typography variant="subtitle1">
-                            Pedido #{pedido.id} - {format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}
+                            Pedido #{pedido.id} - {formatFecha(pedido.fecha)}
                           </Typography>
                         }
                         secondary={

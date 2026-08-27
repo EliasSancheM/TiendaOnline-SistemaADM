@@ -32,4 +32,39 @@ if (!process.env.UPLOADS_DIR && process.env.NODE_ENV === 'production') {
   logger.warn('   perderán en el próximo despliegue. Monta un volumen y apunta UPLOADS_DIR ahí.');
 }
 
-module.exports = { UPLOADS_ROOT, PRODUCTOS_DIR };
+/**
+ * Borra del disco la imagen de un producto.
+ *
+ * Al cambiar la foto de un producto se guardaba la nueva y la anterior se
+ * quedaba en el disco para siempre, sin que nada volviera a referenciarla; lo
+ * mismo al eliminar el producto. En desarrollo pasa desapercibido, pero en
+ * producción esas imágenes viven en un volumen de pago que solo crece.
+ *
+ * Se acepta la URL pública tal como se guarda en la columna imagen_url
+ * ('/uploads/productos/1234.jpg') y se traduce a la ruta real, que depende de
+ * UPLOADS_DIR. Solo se toma el nombre del archivo, nunca la ruta que venga en
+ * la cadena: así un valor manipulado con '../' no puede alcanzar otro
+ * directorio.
+ *
+ * No propaga errores a propósito: que no se pueda borrar un archivo suelto no
+ * es motivo para que falle la operación que el usuario pidió.
+ *
+ * @param {string|null} imagenUrl valor de productos.imagen_url
+ */
+function eliminarImagen(imagenUrl) {
+  if (!imagenUrl || typeof imagenUrl !== 'string') return;
+  if (!imagenUrl.startsWith('/uploads/productos/')) return;
+
+  const nombre = path.basename(imagenUrl);
+  if (!nombre || nombre === '.' || nombre === '..') return;
+
+  const destino = path.join(PRODUCTOS_DIR, nombre);
+  fs.unlink(destino, (err) => {
+    if (err && err.code !== 'ENOENT') {
+      logger.warn(`No se pudo eliminar la imagen ${destino}: ${err.message}`);
+    }
+  });
+}
+
+module.exports = { UPLOADS_ROOT, PRODUCTOS_DIR, eliminarImagen };
+

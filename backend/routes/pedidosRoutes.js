@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const logger = require('../config/logger');
+const { paginacion, meta } = require('../utils/paginacion');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
+const { idNumerico } = require('../middlewares/idMiddleware');
+const { esViolacionDeReferencia } = require('../utils/erroresDb');
 const { pedidoSchema, validate } = require('../middlewares/validatorMiddleware');
-const { ESTADOS, validarTransicion } = require('../utils/estadosPedido');
+const { ESTADOS, validarTransicion, filtroComputables } = require('../utils/estadosPedido');
 const { soloFecha, soloMes } = require('../utils/fechas');
 
 const conflicto = (mensaje) => {
@@ -67,9 +70,8 @@ async function recalcularImportes(detalles, ejecutor) {
 // usa GET /api/facturas/pedidos-disponibles, que ya filtra lo no facturado.
 router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
   try {
-    const { fecha, periodo, page = 1, limit = 50 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit)));
+    const { fecha, periodo } = req.query;
+    const { limit: parsedLimit, offset, page: paginaActual } = paginacion(req.query);
     
     let whereClause = '1=1';
     const params = [];
@@ -102,12 +104,7 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (
  
     res.json({
       data: rows,
-      pagination: {
-        page: parseInt(page),
-        limit: parsedLimit,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / parsedLimit)
-      }
+      pagination: meta({ page: paginaActual, limit: parsedLimit }, countRow.total)
     });
   } catch (err) {
     logger.error('Error listando pedidos:', err);
@@ -115,6 +112,65 @@ router.get('/', authenticateToken, authorizeRole(['admin', 'empleado']), async (
   }
 });
  
+/**
+ * Cifras del panel de inicio, contadas por la base de datos.
+ *
+ * Antes las calculaba el navegador sobre /api/pedidos?limit=200 y
+ * /api/clientes?limit=200. Eso traia dos problemas:
+ *   1. A partir del pedido 201 los contadores de "pendientes" y "completados"
+ *      se congelaban, porque solo veian la primera pagina.
+ *   2. Sumaba todos los pedidos del dia sin mirar el estado, asi que las
+ *      anulaciones y los carritos abandonados en Webpay contaban como venta.
+ * COUNT y SUM en el servidor resuelven ambas cosas y ademas evitan traer
+ * cientos de filas al navegador para no mostrar ninguna.
+ */
+async function resumenOperativo() {
+  const hoy = soloFecha(new Date());
+  const computables = filtroComputables('estado');
+  const dia = db.helpers.date('fecha');
+
+  const [clientes, productos, delDia, pendientes, completados] = await Promise.all([
+    db.getAsync('SELECT COUNT(*) as total FROM clientes'),
+    db.getAsync('SELECT COUNT(*) as total FROM productos'),
+    db.getAsync(
+      `SELECT COUNT(*) as pedidos,
+              SUM(CASE WHEN periodo = 'mañana' THEN 1 ELSE 0 END) as manana,
+              SUM(CASE WHEN periodo = 'tarde' THEN 1 ELSE 0 END) as tarde,
+              SUM(total) as ventas
+         FROM pedidos
+        WHERE ${dia} = ? AND ${computables.sql}`,
+      [hoy, ...computables.params]
+    ),
+    db.getAsync("SELECT COUNT(*) as total FROM pedidos WHERE estado = 'pendiente'"),
+    db.getAsync("SELECT COUNT(*) as total FROM pedidos WHERE estado = 'completado'")
+  ]);
+
+  const n = (v) => Number(v) || 0;
+  return {
+    clientes: n(clientes && clientes.total),
+    productos: n(productos && productos.total),
+    pedidosHoy: n(delDia && delDia.pedidos),
+    pedidosManana: n(delDia && delDia.manana),
+    pedidosTarde: n(delDia && delDia.tarde),
+    ventasHoy: n(delDia && delDia.ventas),
+    pedidosPendientes: n(pendientes && pendientes.total),
+    pedidosCompletados: n(completados && completados.total)
+  };
+}
+
+/** Los ultimos pedidos para la tabla del panel, en el mismo orden que ya mostraba. */
+function ultimosPedidos(limite = 5) {
+  return db.allAsync(
+    `SELECT p.id, p.cliente_id, p.fecha, p.periodo, p.estado, p.total,
+            c.nombre as cliente_nombre
+       FROM pedidos p
+       LEFT JOIN clientes c ON p.cliente_id = c.id
+      ORDER BY p.fecha DESC, p.id DESC
+      LIMIT ?`,
+    [limite]
+  );
+}
+
 // GET /api/pedidos/dashboard-stats — Estadísticas para el dashboard
 router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'empleado', 'contador']), async (req, res) => {
   try {
@@ -129,14 +185,24 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
     lastYearDate.setFullYear(lastYearDate.getFullYear() - 1);
     const lastYearStr = soloFecha(lastYearDate);
 
-    const pedidos = await db.allAsync(`SELECT id, fecha, total FROM pedidos WHERE fecha >= ?`, [lastYearStr]);
+    // Solo cuentan los pedidos que son una venta real: uno anulado, o uno que se
+    // quedó en 'pendiente_pago' porque el cliente abandonó el carrito en Webpay,
+    // no es un ingreso. Antes ambos engordaban las gráficas de ventas y el
+    // ranking de productos más vendidos.
+    const computables = filtroComputables('estado');
+    const computablesJoin = filtroComputables('pe.estado');
+
+    const pedidos = await db.allAsync(
+      `SELECT id, fecha, total FROM pedidos WHERE fecha >= ? AND ${computables.sql}`,
+      [lastYearStr, ...computables.params]
+    );
     const detalles = await db.allAsync(`
-      SELECT d.producto_id, d.cantidad, d.subtotal, p.nombre, p.descripcion, p.precio 
+      SELECT d.producto_id, d.cantidad, d.subtotal, p.nombre, p.descripcion, p.precio
       FROM detalles_pedido d
       JOIN productos p ON d.producto_id = p.id
       JOIN pedidos pe ON d.pedido_id = pe.id
-      WHERE pe.fecha >= ?
-    `, [lastYearStr]);
+      WHERE pe.fecha >= ? AND ${computablesJoin.sql}
+    `, [lastYearStr, ...computablesJoin.params]);
 
     // 1. Productos Populares
     const productosMap = {};
@@ -183,26 +249,38 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
     for (const p of pedidos) {
       const pDate = soloFecha(p.fecha);
       const pMonth = soloMes(p.fecha);
-      
+      const importe = Number(p.total) || 0;
+
       if (pDate >= sevenDaysStr) {
         if (weeklyMap[pDate] !== undefined) {
-          weeklyMap[pDate] += p.total;
+          weeklyMap[pDate] += importe;
         }
       }
-      
+
       if (monthlyMap[pMonth] !== undefined) {
-        monthlyMap[pMonth] += p.total;
+        monthlyMap[pMonth] += importe;
       }
     }
 
     const ventasSemanales = Object.keys(weeklyMap).map(date => ({ date, total: weeklyMap[date] }));
     const ventasMensuales = Object.keys(monthlyMap).map(month => ({ month, total: monthlyMap[month] }));
 
-    res.json({
-      productosPopulares,
-      ventasSemanales,
-      ventasMensuales
-    });
+    const respuesta = { productosPopulares, ventasSemanales, ventasMensuales };
+
+    // El contador no participa en la operación diaria y tiene vetado el acceso a
+    // los datos de clientes (ver clientesRoutes.js), así que no se le envían ni
+    // el resumen del día ni los últimos pedidos con el nombre del cliente. Su
+    // panel se arma con /api/facturas/reporte.
+    if (req.user.role !== 'contador') {
+      const [resumen, pedidosRecientes] = await Promise.all([
+        resumenOperativo(),
+        ultimosPedidos(5)
+      ]);
+      respuesta.resumen = resumen;
+      respuesta.pedidosRecientes = pedidosRecientes;
+    }
+
+    res.json(respuesta);
 
   } catch (err) {
     logger.error('Error calculando stats del dashboard:', err);
@@ -211,7 +289,7 @@ router.get('/dashboard-stats', authenticateToken, authorizeRole(['admin', 'emple
 });
 
 // GET /api/pedidos/:id — Detalle de un pedido con sus líneas
-router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
+router.get('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), idNumerico, async (req, res) => {
   try {
     const pedido = await db.getAsync(
       `SELECT p.*, c.nombre as cliente_nombre 
@@ -279,13 +357,18 @@ router.post('/', authenticateToken, authorizeRole(['admin', 'empleado']), valida
     if (err.status === 400) {
       return res.status(400).json({ error: err.message });
     }
+    // cliente_id apunta a un cliente que no existe (o que se borró entretanto).
+    // Es un dato mal enviado, no una avería: 400 y se dice cuál es el problema.
+    if (esViolacionDeReferencia(err)) {
+      return res.status(400).json({ error: 'El cliente indicado no existe' });
+    }
     logger.error('Error creando pedido:', err);
     res.status(500).json({ error: 'Error al crear el pedido' });
   }
 });
 
 // PUT /api/pedidos/:id — Actualizar pedido y sus detalles (transacción)
-router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), validate(pedidoSchema), async (req, res) => {
+router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), idNumerico, validate(pedidoSchema), async (req, res) => {
   const { cliente_id, fecha, periodo, estado, notas, detalles } = req.body;
 
   try {
@@ -363,13 +446,18 @@ router.put('/:id', authenticateToken, authorizeRole(['admin', 'empleado']), vali
     if (err.status === 400 || err.status === 409) {
       return res.status(err.status).json({ error: err.message });
     }
+    // cliente_id apunta a un cliente que no existe (o que se borró entretanto).
+    // Es un dato mal enviado, no una avería: 400 y se dice cuál es el problema.
+    if (esViolacionDeReferencia(err)) {
+      return res.status(400).json({ error: 'El cliente indicado no existe' });
+    }
     logger.error('Error actualizando pedido:', err);
     res.status(500).json({ error: 'Error al actualizar el pedido' });
   }
 });
 
 // PATCH /api/pedidos/:id/estado — Actualizar solo el estado del pedido
-router.patch('/:id/estado', authenticateToken, authorizeRole(['admin', 'empleado']), async (req, res) => {
+router.patch('/:id/estado', authenticateToken, authorizeRole(['admin', 'empleado']), idNumerico, async (req, res) => {
   const { estado } = req.body;
   if (!ESTADOS.includes(estado)) {
     return res.status(400).json({ error: 'Estado no válido' });
@@ -412,7 +500,7 @@ router.patch('/:id/estado', authenticateToken, authorizeRole(['admin', 'empleado
 });
 
 // DELETE /api/pedidos/:id — Eliminar pedido (CASCADE elimina detalles)
-router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+router.delete('/:id', authenticateToken, authorizeRole(['admin']), idNumerico, async (req, res) => {
   try {
     const result = await db.runAsync('DELETE FROM pedidos WHERE id = ?', [req.params.id]);
 
@@ -423,6 +511,13 @@ router.delete('/:id', authenticateToken, authorizeRole(['admin']), async (req, r
     logger.info(`Pedido eliminado (ID: ${req.params.id}) por usuario: ${req.user.username}`);
     res.json({ message: 'Pedido eliminado' });
   } catch (err) {
+    // El pedido está incluido en una factura emitida: borrarlo descuadraría
+    // ese documento, así que la referencia lo protege.
+    if (esViolacionDeReferencia(err)) {
+      return res.status(409).json({
+        error: 'No se puede eliminar el pedido porque está incluido en una factura. Quítalo de la factura o anula la factura primero.'
+      });
+    }
     logger.error('Error eliminando pedido:', err);
     res.status(500).json({ error: 'Error al eliminar el pedido' });
   }

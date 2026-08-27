@@ -38,6 +38,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
 import { printStyles } from '../components/PlantillaImpresion';
+import { formatFecha } from '../utils/fechas';
 
 function DetallePedido() {
   const { id } = useParams();
@@ -188,7 +189,7 @@ function DetallePedido() {
             </div>
             <div style="text-align: right;">
               <strong>Fecha de Entrega:</strong><br>
-              <span style="font-size: 1.2rem;">${format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}</span>
+              <span style="font-size: 1.2rem;">${formatFecha(pedido.fecha)}</span>
             </div>
           </div>
 
@@ -265,7 +266,7 @@ function DetallePedido() {
             </div>
             <div style="text-align: right;">
               <strong>Fecha de Preparación:</strong><br>
-              <span>${format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}</span>
+              <span>${formatFecha(pedido.fecha)}</span>
             </div>
           </div>
 
@@ -420,7 +421,7 @@ function DetallePedido() {
                   Fecha
                 </Typography>
                 <Typography variant="body1">
-                  {format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}
+                  {formatFecha(pedido.fecha)}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={6}>

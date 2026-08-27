@@ -47,6 +47,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { formatFecha } from '../utils/fechas';
 
 function Facturas() {
   const { authenticatedFetch, isAdmin } = useAuth();
@@ -983,7 +984,7 @@ function Facturas() {
                               <Typography variant="body2" color="text.secondary">
                                 Fecha: {(() => {
                                   try {
-                                    return format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es });
+                                    return formatFecha(pedido.fecha);
                                   } catch (e) {
                                     return pedido.fecha;
                                   }

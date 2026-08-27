@@ -34,6 +34,7 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useAuth } from '../contexts/AuthContext';
+import { formatFecha } from '../utils/fechas';
 import { 
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer
 } from 'recharts';
@@ -78,8 +79,6 @@ function Dashboard() {
       setLoading(true);
       setError(null);
       
-      const today = new Date().toISOString().split('T')[0];
-
       // El contador no tiene acceso a /api/clientes ni /api/pedidos: contienen
       // datos personales y operación diaria que no le corresponden. Su tablero
       // se arma con las estadísticas agregadas (abiertas a los tres roles) y el
@@ -108,57 +107,29 @@ function Dashboard() {
         return;
       }
 
-      // Obtener datos básicos (limit=200 para estadísticas)
-      const [clientesRes, pedidosHoyRes, todosPedidosRes, statsRes, productosRes] = await Promise.all([
-        authenticatedFetch('/api/clientes?limit=200'),
-        authenticatedFetch(`/api/pedidos?fecha=${today}&limit=200`),
-        authenticatedFetch('/api/pedidos?limit=200'),
-        authenticatedFetch('/api/pedidos/dashboard-stats'),
-        // limit=1: solo interesa pagination.total, no traer el catalogo entero
-        authenticatedFetch('/api/productos?limit=1')
-      ]);
-
-      const clientesJson = await clientesRes.json();
-      const pedidosHoyJson = await pedidosHoyRes.json();
-      const todosPedidosJson = await todosPedidosRes.json();
+      // Una sola petición: el servidor cuenta con COUNT/SUM sobre la tabla
+      // entera. Antes se pedían clientes, pedidos de hoy, todos los pedidos y
+      // productos —cuatro listados de hasta 200 filas— para acabar mostrando
+      // ocho números y cinco pedidos. Además de ser un desperdicio, los
+      // contadores de "pendientes" y "completados" se calculaban sobre esas 200
+      // filas: a partir del pedido 201 dejaban de moverse, y las ventas del día
+      // incluían pedidos anulados y carritos abandonados en Webpay.
+      const statsRes = await authenticatedFetch('/api/pedidos/dashboard-stats');
       const statsJson = await statsRes.json();
-      const productosJson = await productosRes.json();
-
-      // Extraer datos del formato paginado
-      const clientesData = clientesJson.data || clientesJson;
-      const pedidosHoy = pedidosHoyJson.data || pedidosHoyJson;
-      const todosPedidos = todosPedidosJson.data || todosPedidosJson;
-
-      // Usar totales de la paginación si están disponibles
-      const totalClientes = clientesJson.pagination?.total ?? clientesData.length;
-      const totalPedidosPendientes = todosPedidos.filter(p => p.estado === 'pendiente').length;
-      const totalPedidosCompletados = todosPedidos.filter(p => p.estado === 'completado').length;
-      
-      // Calcular estadísticas
-      const pedidosMañana = pedidosHoy.filter(p => p.periodo === 'mañana').length;
-      const pedidosTarde = pedidosHoy.filter(p => p.periodo === 'tarde').length;
-      const ventasHoy = pedidosHoy.reduce((sum, pedido) => sum + parseFloat(pedido.total || 0), 0);
-      
-      // Obtener pedidos recientes (últimos 5)
-      const pedidosRecientesData = todosPedidos
-        .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
-        .slice(0, 5);
+      const resumen = statsJson.resumen || {};
 
       setStats({
-        clientes: totalClientes,
-        pedidosHoy: pedidosHoy.length,
-        pedidosMañana,
-        pedidosTarde,
-        // Total real del catalogo. Antes se usaba productosPopulares.length, que
-        // solo cuenta los productos ya vendidos y ademas viene limitado a 5 desde
-        // el backend: anadir un producto no movia el contador.
-        productos: productosJson.pagination?.total ?? (productosJson.data || []).length,
-        ventasHoy,
-        pedidosPendientes: totalPedidosPendientes,
-        pedidosCompletados: totalPedidosCompletados,
+        clientes: resumen.clientes || 0,
+        pedidosHoy: resumen.pedidosHoy || 0,
+        pedidosMañana: resumen.pedidosManana || 0,
+        pedidosTarde: resumen.pedidosTarde || 0,
+        productos: resumen.productos || 0,
+        ventasHoy: resumen.ventasHoy || 0,
+        pedidosPendientes: resumen.pedidosPendientes || 0,
+        pedidosCompletados: resumen.pedidosCompletados || 0,
       });
-      
-      setPedidosRecientes(pedidosRecientesData);
+
+      setPedidosRecientes(statsJson.pedidosRecientes || []);
       setProductosPopulares(statsJson.productosPopulares || []);
       setVentasSemanales(statsJson.ventasSemanales || []);
       setVentasMensuales(statsJson.ventasMensuales || []);
@@ -554,7 +525,7 @@ function Dashboard() {
                         <TableCell>#{pedido.id}</TableCell>
                         <TableCell>{pedido.cliente_nombre || `Cliente ${pedido.cliente_id}`}</TableCell>
                         <TableCell>
-                          {format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}
+                          {formatFecha(pedido.fecha)}
                         </TableCell>
                         <TableCell>${parseFloat(pedido.total || 0).toLocaleString()}</TableCell>
                         <TableCell>

@@ -68,7 +68,7 @@ beforeAll(async () => {
   };
   mockDb.helpers = {
     now: () => 'CURRENT_TIMESTAMP',
-    date: (col) => `DATE(${col}, 'localtime')`,
+    date: (col) => `DATE(${col})`,
     groupConcat: (col) => `GROUP_CONCAT(${col})`,
     like: () => 'LIKE'
   };

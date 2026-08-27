@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { printStyles } from '../components/PlantillaImpresion';
+import { formatFecha } from './fechas';
 
 /**
  * Creates a hidden iframe, writes HTML content, and triggers the browser print dialog.
@@ -55,7 +56,7 @@ export const renderPlantillaRepartidor = (pedido) => {
         <h1>HOJA DE REPARTO</h1>
         <div class="order-info">
           <p><strong>Pedido #:</strong> ${pedido.id}</p>
-          <p><strong>Fecha:</strong> ${format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}</p>
+          <p><strong>Fecha:</strong> ${formatFecha(pedido.fecha)}</p>
           <p><strong>Período:</strong> ${pedido.periodo}</p>
         </div>
       </div>
@@ -126,7 +127,7 @@ export const renderPlantillaPreparador = (pedido) => {
         <h1>HOJA DE PRODUCCIÓN</h1>
         <div class="order-info">
           <p><strong>Pedido #:</strong> ${pedido.id}</p>
-          <p><strong>Fecha:</strong> ${format(new Date(pedido.fecha), 'dd/MM/yyyy', { locale: es })}</p>
+          <p><strong>Fecha:</strong> ${formatFecha(pedido.fecha)}</p>
           <p><strong>Período:</strong> ${pedido.periodo}</p>
           <p><strong>Cliente:</strong> ${pedido.cliente_nombre}</p>
         </div>
