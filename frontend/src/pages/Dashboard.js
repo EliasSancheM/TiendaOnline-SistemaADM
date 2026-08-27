@@ -109,17 +109,20 @@ function Dashboard() {
       }
 
       // Obtener datos básicos (limit=200 para estadísticas)
-      const [clientesRes, pedidosHoyRes, todosPedidosRes, statsRes] = await Promise.all([
+      const [clientesRes, pedidosHoyRes, todosPedidosRes, statsRes, productosRes] = await Promise.all([
         authenticatedFetch('/api/clientes?limit=200'),
         authenticatedFetch(`/api/pedidos?fecha=${today}&limit=200`),
         authenticatedFetch('/api/pedidos?limit=200'),
-        authenticatedFetch('/api/pedidos/dashboard-stats')
+        authenticatedFetch('/api/pedidos/dashboard-stats'),
+        // limit=1: solo interesa pagination.total, no traer el catalogo entero
+        authenticatedFetch('/api/productos?limit=1')
       ]);
 
       const clientesJson = await clientesRes.json();
       const pedidosHoyJson = await pedidosHoyRes.json();
       const todosPedidosJson = await todosPedidosRes.json();
       const statsJson = await statsRes.json();
+      const productosJson = await productosRes.json();
 
       // Extraer datos del formato paginado
       const clientesData = clientesJson.data || clientesJson;
@@ -146,7 +149,10 @@ function Dashboard() {
         pedidosHoy: pedidosHoy.length,
         pedidosMañana,
         pedidosTarde,
-        productos: statsJson.productosPopulares?.length || 0, // Mock for total since we don't fetch all products here anymore
+        // Total real del catalogo. Antes se usaba productosPopulares.length, que
+        // solo cuenta los productos ya vendidos y ademas viene limitado a 5 desde
+        // el backend: anadir un producto no movia el contador.
+        productos: productosJson.pagination?.total ?? (productosJson.data || []).length,
         ventasHoy,
         pedidosPendientes: totalPedidosPendientes,
         pedidosCompletados: totalPedidosCompletados,
