@@ -186,6 +186,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+// ─── Alta de rescate del administrador ─────────────────────────────
+// Si ADMIN_PASSWORD esta definida, crea el administrador o le pone esa
+// contrasena. Es la via de entrada cuando se pierde la aleatoria que se
+// imprime al crear la base. Sin la variable no hace absolutamente nada.
+const { bootstrapAdmin } = require('./utils/bootstrapAdmin');
+bootstrapAdmin().catch(err =>
+  logger.error('Error en el alta de rescate del administrador:', err));
+
 // ─── Limpieza periodica de tokens revocados ────────────────────────
 // La tabla solo necesita guardar un token hasta que caduca por si solo. Sin
 // esta poda crece sin limite. Se ejecuta al arrancar y cada 6 horas; unref()
