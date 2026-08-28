@@ -21,6 +21,7 @@ import EditarPedido from './pages/EditarPedido';
 import NuevoPedido from './pages/NuevoPedido';
 import Productos from './pages/Productos';
 import Facturas from './pages/Facturas';
+import Usuarios from './pages/Usuarios';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Login from './pages/Login';
@@ -249,6 +250,14 @@ function ProtectedLayout() {
                   <Facturas />
                 </ProtectedRoute>
               } 
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <ProtectedRoute requiredRoles={['admin']}>
+                  <Usuarios />
+                </ProtectedRoute>
+              }
             />
           </Routes>
         </Container>

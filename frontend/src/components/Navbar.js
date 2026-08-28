@@ -33,6 +33,7 @@ import {
   Inventory,
   Receipt,
   Home,
+  ManageAccounts,
   Menu as MenuIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -54,6 +55,7 @@ const Navbar = () => {
     if (path.startsWith('/admin/pedidos')) return 2;
     if (path.startsWith('/admin/productos')) return 3;
     if (path.startsWith('/admin/facturas')) return 4;
+    if (path.startsWith('/admin/usuarios')) return 5;
     return 0;
   };
 
@@ -62,7 +64,7 @@ const Navbar = () => {
   };
 
   const navigateToTab = (value) => {
-    const routes = ['/admin', '/admin/clientes', '/admin/pedidos', '/admin/productos', '/admin/facturas'];
+    const routes = ['/admin', '/admin/clientes', '/admin/pedidos', '/admin/productos', '/admin/facturas', '/admin/usuarios'];
     navigate(routes[value] || '/admin');
     setMobileOpen(false);
   };
@@ -83,6 +85,11 @@ const Navbar = () => {
 
     if (isAdmin || isContador) {
       tabs.push({ label: 'Facturas', icon: <Receipt />, value: 4 });
+    }
+
+    // Solo el administrador gestiona las credenciales del personal.
+    if (isAdmin) {
+      tabs.push({ label: 'Usuarios', icon: <ManageAccounts />, value: 5 });
     }
 
     return tabs;

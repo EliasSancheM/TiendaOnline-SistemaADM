@@ -25,6 +25,48 @@ const resetPasswordSchema = Joi.object({
   password: strongPassword
 });
 
+const ROLES = ['admin', 'empleado', 'contador'];
+
+// Alta de una cuenta del personal desde el panel.
+//
+// A diferencia de /api/auth/register, aquí el rol es un dato de entrada. Aquel
+// lo fijaba a 'empleado' por código, así que no existía forma de crear un
+// segundo administrador y perder el acceso al único dejaba el sistema sin
+// nadie que pudiera administrarlo.
+const usuarioCrearSchema = Joi.object({
+  username: Joi.string().alphanum().min(3).max(30).required()
+    .messages({ 'string.alphanum': 'El usuario solo puede tener letras y números, sin espacios' }),
+  password: strongPassword,
+  nombre_completo: Joi.string().min(2).max(100).required(),
+  // El correo es opcional: sirve para recuperar la contraseña, pero no todo el
+  // personal de una panadería tiene uno, y exigirlo obligaría a inventarlos.
+  email: Joi.string().email().allow('', null),
+  role: Joi.string().valid(...ROLES).default('empleado')
+    .messages({ 'any.only': 'El rol debe ser admin, empleado o contador' })
+});
+
+// Modificación parcial: solo llega lo que cambia.
+// La contraseña NO se toca aquí; tiene sus propias rutas, que además cierran
+// las sesiones abiertas.
+const usuarioActualizarSchema = Joi.object({
+  nombre_completo: Joi.string().min(2).max(100),
+  email: Joi.string().email().allow('', null),
+  role: Joi.string().valid(...ROLES),
+  activo: Joi.boolean()
+}).min(1).messages({ 'object.min': 'No se indicó ningún cambio' });
+
+// Cambio de la contraseña propia: se exige la actual.
+const cambiarPasswordSchema = Joi.object({
+  passwordActual: Joi.string().required()
+    .messages({ 'any.required': 'Debes escribir tu contraseña actual' }),
+  passwordNueva: strongPassword
+});
+
+// Un admin asigna una contraseña a otra persona (no necesita la anterior).
+const establecerPasswordSchema = Joi.object({
+  password: strongPassword
+});
+
 const clienteSchema = Joi.object({
   nombre: Joi.string().min(2).max(100).required(),
   telefono: Joi.string().pattern(/^[0-9+\-\s()]+$/).max(20).allow(''),
@@ -148,6 +190,11 @@ const validate = (schema) => {
 };
 
 module.exports = {
+  ROLES,
+  usuarioCrearSchema,
+  usuarioActualizarSchema,
+  cambiarPasswordSchema,
+  establecerPasswordSchema,
   loginSchema,
   clienteSchema,
   productoSchema,
