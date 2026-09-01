@@ -143,6 +143,7 @@ const productosRoutes = require('./routes/productosRoutes');
 const facturasRoutes = require('./routes/facturasRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const usuariosRoutes = require('./routes/usuariosRoutes');
+const diagnosticoRoutes = require('./routes/diagnosticoRoutes');
 
 // Registrar rutas — Patrón consistente: /api/<recurso>
 app.use('/api/auth', authRoutes);
@@ -152,6 +153,7 @@ app.use('/api/productos', productosRoutes);
 app.use('/api/facturas', facturasRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/usuarios', usuariosRoutes);
+app.use('/api/diagnostico', diagnosticoRoutes);
 
 // Health check: Railway y cualquier monitor necesitan una ruta que responda 200
 // sin tocar la base de datos ni exigir autenticación. Va ANTES del catch-all del
