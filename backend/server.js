@@ -198,6 +198,23 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+// ─── Coherencia de las credenciales de Webpay ──────────────────────
+// La llave de integración es pública (viene en el SDK), así que es fácil
+// acabar con ella puesta como si fuera la propia. Con un código de comercio
+// real, Transbank rechaza el par y el error no menciona la causa: el checkout
+// falla entero sin ninguna pista.
+if ((process.env.WEBPAY_ENVIRONMENT || '').toLowerCase() === 'production') {
+  const { IntegrationApiKeys } = require('transbank-sdk');
+  if ((process.env.WEBPAY_API_KEY || '').trim() === IntegrationApiKeys.WEBPAY) {
+    logger.error('❌ WEBPAY_API_KEY es la llave PÚBLICA DE PRUEBAS de Transbank, no la de producción.');
+    logger.error('   Con un código de comercio real, Transbank rechazará todos los pagos.');
+    logger.error('   Tu llave de producción te la entrega Transbank al validar la integración.');
+  }
+  if (!process.env.WEBPAY_API_KEY || !process.env.WEBPAY_COMMERCE_CODE) {
+    logger.error('❌ WEBPAY_ENVIRONMENT=production pero falta WEBPAY_API_KEY o WEBPAY_COMMERCE_CODE.');
+  }
+}
+
 // ─── Alta de rescate del administrador ─────────────────────────────
 // Si ADMIN_PASSWORD esta definida, crea el administrador o le pone esa
 // contrasena. Es la via de entrada cuando se pierde la aleatoria que se

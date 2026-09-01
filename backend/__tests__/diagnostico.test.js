@@ -165,3 +165,77 @@ describe('No filtrar credenciales', () => {
     expect(res.body.configuracion.codigoComercio).not.toContain('597053');
   });
 });
+
+describe('La llave publica de pruebas puesta como si fuera la de produccion', () => {
+  // Caso real, y de los que cuestan horas: la llave de INTEGRACION de Transbank
+  // es publica —viene dentro del SDK y sale en toda su documentacion— asi que es
+  // lo primero que uno encuentra al buscar "api key webpay". Con un codigo de
+  // comercio real, Transbank rechaza el par, y su mensaje de error no menciona
+  // en ningun momento que la llave sea la de pruebas.
+  const { IntegrationApiKeys } = require('transbank-sdk');
+
+  it('lo dice con todas las letras', async () => {
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_COMMERCE_CODE = '597053097973';
+    process.env.WEBPAY_API_KEY = IntegrationApiKeys.WEBPAY;
+    mockCreateTransaction.mockRejectedValue(new Error('Api Key or Commerce Code is invalid'));
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.usaLlaveDePruebas).toBe(true);
+    expect(res.body.diagnostico).toMatch(/PUBLICA DE PRUEBAS/);
+  });
+
+  it('no confunde una llave propia con la de pruebas', async () => {
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_API_KEY = 'UNA-LLAVE-DISTINTA-DE-VERDAD';
+    mockCreateTransaction.mockResolvedValue({ url: 'https://x', token: 't' });
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.usaLlaveDePruebas).toBe(false);
+  });
+});
+
+describe('Basura al copiar y pegar', () => {
+  it('detecta comillas alrededor del valor', async () => {
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_API_KEY = '"ABC123"';
+    mockCreateTransaction.mockRejectedValue(new Error('invalid'));
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.problemasDeFormato.join(' ')).toMatch(/comillas/i);
+  });
+
+  it('detecta espacios o saltos de linea alrededor', async () => {
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_API_KEY = '  ABC123\n';
+    mockCreateTransaction.mockRejectedValue(new Error('invalid'));
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.problemasDeFormato.join(' ')).toMatch(/espacios o saltos/i);
+  });
+
+  it('detecta las llaves de referencia de Railway', async () => {
+    // El mismo tropiezo que ya hubo con DATABASE_URL.
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_API_KEY = '${{ABC123}}';
+    mockCreateTransaction.mockRejectedValue(new Error('invalid'));
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.problemasDeFormato.join(' ')).toMatch(/referencia de Railway/i);
+  });
+
+  it('un valor limpio no genera ninguna queja', async () => {
+    process.env.WEBPAY_ENVIRONMENT = 'production';
+    process.env.WEBPAY_API_KEY = 'ABC123DEF456';
+    mockCreateTransaction.mockResolvedValue({ url: 'https://x', token: 't' });
+
+    const res = await diagnosticar(token(1, 'admin'));
+
+    expect(res.body.configuracion.problemasDeFormato).toEqual([]);
+  });
+});
