@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
+  Avatar,
   Box,
   Button,
   Paper,
@@ -24,8 +25,24 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  Image as ImageIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { API_BASE_URL } from '../config/api';
+
+/**
+ * URL absoluta de la foto de un producto.
+ *
+ * La base de datos guarda una ruta relativa ('/uploads/productos/x.png') y el
+ * backend vive en otro dominio que el panel. Sin anteponer API_BASE_URL, el
+ * navegador la pide a dondelaeli.com, donde Vercel responde 200 con el
+ * index.html del propio sitio: la etiqueta <img> recibe HTML en lugar de una
+ * imagen y no muestra nada. Y como no es un 404, tampoco se ve el error.
+ */
+const urlDeFoto = (imagenUrl) => {
+  if (!imagenUrl) return null;
+  return imagenUrl.startsWith('http') ? imagenUrl : `${API_BASE_URL}${imagenUrl}`;
+};
 
 function Productos() {
   const { authenticatedFetch, isAuthenticated } = useAuth();
@@ -246,6 +263,7 @@ function Productos() {
         <Table>
           <TableHead>
             <TableRow>
+              <TableCell sx={{ width: 72 }}>Foto</TableCell>
               <TableCell>Nombre</TableCell>
               <TableCell align="right">Precio</TableCell>
               <TableCell>Descripción</TableCell>
@@ -255,6 +273,16 @@ function Productos() {
           <TableBody>
             {productos.map((producto) => (
               <TableRow key={producto.id}>
+                <TableCell>
+                  <Avatar
+                    variant="rounded"
+                    src={urlDeFoto(producto.imagen_url)}
+                    alt={producto.nombre}
+                    sx={{ width: 56, height: 56, bgcolor: 'rgba(212,163,115,0.15)' }}
+                  >
+                    <ImageIcon sx={{ color: 'rgba(61,43,31,0.35)' }} />
+                  </Avatar>
+                </TableCell>
                 <TableCell>{producto.nombre}</TableCell>
                 <TableCell align="right">${producto.precio.toFixed(2)}</TableCell>
                 <TableCell>{producto.descripcion}</TableCell>
@@ -276,7 +304,7 @@ function Productos() {
             ))}
             {productos.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} align="center">
+                <TableCell colSpan={5} align="center">
                   No hay productos registrados
                 </TableCell>
               </TableRow>
@@ -326,6 +354,35 @@ function Productos() {
             multiline
             rows={2}
           />
+          {/* Foto actual: sin esto se subía una imagen y el panel no la
+              mostraba en ninguna parte, así que no había forma de comprobar
+              cuál había quedado guardada. */}
+          {(currentProducto.imagen || currentProducto.imagen_url) && (
+            <Box
+              sx={{
+                mt: 2, display: 'flex', alignItems: 'center', gap: 2,
+                p: 1.5, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 2,
+              }}
+            >
+              <Avatar
+                variant="rounded"
+                src={
+                  currentProducto.imagen
+                    ? URL.createObjectURL(currentProducto.imagen)
+                    : urlDeFoto(currentProducto.imagen_url)
+                }
+                alt={currentProducto.nombre}
+                sx={{ width: 72, height: 72 }}
+              >
+                <ImageIcon />
+              </Avatar>
+              <Typography variant="body2" color="text.secondary">
+                {currentProducto.imagen
+                  ? 'Se guardará esta imagen al pulsar Guardar.'
+                  : 'Foto actual. Sube otra para reemplazarla.'}
+              </Typography>
+            </Box>
+          )}
           <Button
             variant="outlined"
             component="label"
