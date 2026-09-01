@@ -202,7 +202,12 @@ function estadoDePagos() {
     llavePropia: tieneLlave,
     llaveEsLaDePruebas,
     coherente,
-    motivo
+    motivo,
+    // BACKEND_URL compone la dirección de retorno que se envía a Transbank. Si
+    // está mal (sin https, con una barra de más, apuntando a otro sitio),
+    // Transbank rechaza la transacción sin que nada más parezca fuera de sitio.
+    baseDeRetornoConfigurada: process.env.BACKEND_URL || null,
+    ultimoFalloDePasarela: require('./utils/estadoPasarela').ultimoFallo()
   };
 }
 

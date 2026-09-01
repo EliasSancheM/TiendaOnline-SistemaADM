@@ -6,6 +6,7 @@ const { sendOrderConfirmationEmail } = require('../utils/emailService');
 const { createTransaction, commitTransaction } = require('../utils/webpayService');
 const { validate, publicCheckoutSchema } = require('../middlewares/validatorMiddleware');
 const { soloFecha } = require('../utils/fechas');
+const { registrarFallo, registrarExito } = require('../utils/estadoPasarela');
 
 // POST /api/public/checkout — Crear pedido e iniciar pago con Webpay
 router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
@@ -114,6 +115,12 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
     try {
       wpResponse = await createTransaction(buyOrder, sessionId, amount, returnUrl);
     } catch (errPasarela) {
+      // Se recuerda para poder consultarlo por HTTP mientras la tienda está caída.
+      registrarFallo(errPasarela, {
+        ambiente: (process.env.WEBPAY_ENVIRONMENT || 'integracion'),
+        baseDeRetorno: backendUrl,
+        montoEnviado: amount
+      });
       logger.error(
         `No se pudo abrir la transacción en Webpay para el pedido ${pedidoId} ` +
         `(ambiente: ${process.env.WEBPAY_ENVIRONMENT || 'integracion'}, ` +
@@ -135,6 +142,8 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
         error: 'No pudimos conectar con el sistema de pagos. No se ha registrado tu pedido ni se te ha cobrado nada. Inténtalo en unos minutos o llámanos.'
       });
     }
+
+    registrarExito();
 
     // 6. Retornar token y URL de redirección al frontend
     res.status(200).json({ 
