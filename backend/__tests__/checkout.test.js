@@ -296,3 +296,67 @@ describe('GET/POST /api/public/checkout/webpay-return', () => {
     expect(pedido.estado).toBe('cancelado');
   });
 });
+
+describe('Cuando Transbank no acepta abrir la transaccion', () => {
+  // El caso real: al pasar a produccion, las credenciales todavia no estaban
+  // habilitadas y createTransaction lanzaba. El pedido ya se habia guardado
+  // como 'pendiente_pago', asi que cada intento fallido dejaba un pedido
+  // fantasma en la lista de produccion y el cliente, al reintentar, generaba
+  // otro. Ademas veia "Hubo un error al procesar tu pedido", que no dice si le
+  // cobraron o no.
+  const pedidoValido = {
+    cliente: {
+      nombre: 'Cliente Prueba',
+      email: 'cliente.prueba@example.com',
+      telefono: '912345678',
+      direccion: 'Av. Siempre Viva 742'
+    },
+    items: [{ id: PAN.id, quantity: 2 }],
+    periodo: 'mañana'
+  };
+
+  beforeEach(async () => {
+    mockCreateTransaction.mockRejectedValue(new Error('Api Key or Commerce Code is invalid'));
+    // Los pedidos de los tests anteriores no cuentan aqui: lo que se comprueba
+    // es que ESTE flujo no deje ninguno vivo.
+    await mockDb.runAsync('DELETE FROM pedidos');
+    await mockDb.runAsync('DELETE FROM detalles_pedido');
+  });
+
+  it('responde 502 y explica que no se cobro nada', async () => {
+    const res = await request(app).post('/api/public/checkout').send(pedidoValido);
+
+    expect(res.statusCode).toBe(502);
+    expect(res.body.error).toMatch(/no se ha registrado tu pedido/i);
+    expect(res.body.error).toMatch(/se te ha cobrado nada/i);
+  });
+
+  it('no deja el pedido colgado en pendiente_pago', async () => {
+    await request(app).post('/api/public/checkout').send(pedidoValido);
+
+    const colgados = await mockDb.allAsync(
+      "SELECT id FROM pedidos WHERE estado = 'pendiente_pago'"
+    );
+    expect(colgados).toHaveLength(0);
+  });
+
+  it('el pedido queda anulado, no borrado, para que exista rastro', async () => {
+    await request(app).post('/api/public/checkout').send(pedidoValido);
+
+    const ultimo = await mockDb.getAsync(
+      'SELECT estado FROM pedidos ORDER BY id DESC LIMIT 1'
+    );
+    expect(ultimo.estado).toBe('cancelado');
+  });
+
+  it('cada reintento no acumula pedidos vivos', async () => {
+    await request(app).post('/api/public/checkout').send(pedidoValido);
+    await request(app).post('/api/public/checkout').send(pedidoValido);
+    await request(app).post('/api/public/checkout').send(pedidoValido);
+
+    const vivos = await mockDb.allAsync(
+      "SELECT id FROM pedidos WHERE estado NOT IN ('cancelado')"
+    );
+    expect(vivos).toHaveLength(0);
+  });
+});

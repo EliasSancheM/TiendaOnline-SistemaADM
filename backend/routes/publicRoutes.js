@@ -105,7 +105,36 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
     const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
     const returnUrl = `${backendUrl}/api/public/checkout/webpay-return?pedidoId=${pedidoId}`;
 
-    const wpResponse = await createTransaction(buyOrder, sessionId, amount, returnUrl);
+    // Si Transbank rechaza la apertura de la transacción (credenciales que aún
+    // no están habilitadas, comercio sin activar, caída del servicio), el pedido
+    // YA está guardado como 'pendiente_pago'. Sin tratarlo aparte, cada intento
+    // fallido dejaba un pedido fantasma en la lista de producción, y el cliente
+    // volvía a intentarlo generando otro más.
+    let wpResponse;
+    try {
+      wpResponse = await createTransaction(buyOrder, sessionId, amount, returnUrl);
+    } catch (errPasarela) {
+      logger.error(
+        `No se pudo abrir la transacción en Webpay para el pedido ${pedidoId} ` +
+        `(ambiente: ${process.env.WEBPAY_ENVIRONMENT || 'integracion'}, ` +
+        `comercio: ${process.env.WEBPAY_COMMERCE_CODE ? 'configurado' : 'por defecto'}): ` +
+        (errPasarela && errPasarela.message)
+      );
+
+      // Para el cliente ese pedido nunca existió: se anula en el acto.
+      try {
+        await db.runAsync(
+          "UPDATE pedidos SET estado = 'cancelado' WHERE id = ? AND estado = 'pendiente_pago'",
+          [pedidoId]
+        );
+      } catch (errAnular) {
+        logger.error('Tampoco se pudo anular el pedido fantasma:', errAnular);
+      }
+
+      return res.status(502).json({
+        error: 'No pudimos conectar con el sistema de pagos. No se ha registrado tu pedido ni se te ha cobrado nada. Inténtalo en unos minutos o llámanos.'
+      });
+    }
 
     // 6. Retornar token y URL de redirección al frontend
     res.status(200).json({ 
