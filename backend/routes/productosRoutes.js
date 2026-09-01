@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const db = require('../config/database');
 const logger = require('../config/logger');
 const { paginacion, meta } = require('../utils/paginacion');
@@ -111,6 +112,68 @@ router.get('/', async (req, res) => {
   } catch (err) {
     logger.error('Error listando productos:', err);
     res.status(500).json({ error: 'Error al obtener productos' });
+  }
+});
+
+// GET /api/productos/diagnostico/almacenamiento — ¿dónde acaban las fotos?
+//
+// Existe porque este problema se ha repetido dos veces y desde fuera es
+// indistinguible: el disco de un contenedor es efímero, así que las imágenes se
+// suben bien, se ven bien, y desaparecen en el siguiente despliegue. La base de
+// datos conserva la ruta, de modo que el panel sigue pidiendo un archivo que ya
+// no existe y solo se ve un hueco.
+//
+// Esto responde con hechos: qué carpeta se está usando de verdad, si la
+// variable está puesta, cuántos archivos hay y cuántos productos apuntan a una
+// foto que ya no está.
+router.get('/diagnostico/almacenamiento', authenticateToken, authorizeRole(['admin']), async (req, res) => {
+  try {
+    const variableConfigurada = !!process.env.UPLOADS_DIR;
+
+    let existe = false;
+    let escribible = false;
+    let archivos = [];
+    try {
+      archivos = fs.readdirSync(PRODUCTOS_DIR);
+      existe = true;
+      fs.accessSync(PRODUCTOS_DIR, fs.constants.W_OK);
+      escribible = true;
+    } catch (e) {
+      // existe/escribible se quedan en false; no es un error de la petición
+    }
+
+    const enDisco = new Set(archivos);
+    const productos = await db.allAsync(
+      'SELECT id, nombre, imagen_url FROM productos WHERE imagen_url IS NOT NULL'
+    );
+    const rotas = productos.filter(p => !enDisco.has(path.basename(p.imagen_url)));
+
+    // Sin la variable, la carpeta vive dentro del contenedor y se borra en cada
+    // despliegue. Con ella, depende de que haya un volumen montado en esa ruta,
+    // cosa que el proceso no puede comprobar por sí mismo.
+    const persistente = variableConfigurada ? 'depende del volumen' : 'no';
+
+    res.json({
+      directorio: PRODUCTOS_DIR,
+      variableConfigurada,
+      existe,
+      escribible,
+      archivosEnDisco: archivos.length,
+      productosConFoto: productos.length,
+      fotosRotas: rotas.length,
+      ejemplosRotos: rotas.slice(0, 5).map(p => ({ id: p.id, nombre: p.nombre, imagen_url: p.imagen_url })),
+      persistente,
+      diagnostico: !variableConfigurada
+        ? 'UPLOADS_DIR no está definida: las fotos se guardan dentro del contenedor y se borrarán en el próximo despliegue. Monta un volumen y apunta UPLOADS_DIR a su ruta.'
+        : (!existe
+          ? `La carpeta ${PRODUCTOS_DIR} no existe. Comprueba que el volumen esté montado en esa ruta.`
+          : (rotas.length > 0
+            ? `Hay ${rotas.length} producto(s) apuntando a una foto que ya no está en el disco. Si esto ocurre tras un despliegue, el volumen no está montado donde apunta UPLOADS_DIR.`
+            : 'Todo correcto: la carpeta existe, se puede escribir y todas las fotos están.'))
+    });
+  } catch (err) {
+    logger.error('Error en el diagnóstico de almacenamiento:', err);
+    res.status(500).json({ error: 'No se pudo comprobar el almacenamiento' });
   }
 });
 
