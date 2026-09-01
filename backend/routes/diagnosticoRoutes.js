@@ -15,6 +15,7 @@ const logger = require('../config/logger');
 const { authenticateToken, authorizeRole } = require('../middlewares/authMiddleware');
 const { createTransaction } = require('../utils/webpayService');
 const { IntegrationApiKeys, IntegrationCommerceCodes } = require('transbank-sdk');
+const { baseDelBackend } = require('../utils/urlBackend');
 
 /** Deja a la vista los últimos dígitos, suficientes para cotejar sin exponerlo. */
 const enmascarar = (valor) => {
@@ -69,7 +70,7 @@ router.get('/pagos', authenticateToken, authorizeRole(['admin']), async (req, re
   };
 
   try {
-    const base = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    const base = baseDelBackend(req);
     const respuesta = await createTransaction(
       `DIAG-${Date.now()}`.slice(0, 26), // buy_order: máximo 26 caracteres
       'DIAG',

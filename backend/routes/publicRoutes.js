@@ -7,6 +7,7 @@ const { createTransaction, commitTransaction } = require('../utils/webpayService
 const { validate, publicCheckoutSchema } = require('../middlewares/validatorMiddleware');
 const { soloFecha } = require('../utils/fechas');
 const { registrarFallo, registrarExito } = require('../utils/estadoPasarela');
+const { baseDelBackend } = require('../utils/urlBackend');
 
 // POST /api/public/checkout — Crear pedido e iniciar pago con Webpay
 router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
@@ -103,7 +104,7 @@ router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
     const amount = calculatedTotal;
     
     // URL a la que Webpay redirigirá después del pago (soporta Railway y local automáticamente)
-    const backendUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+    const backendUrl = baseDelBackend(req);
     const returnUrl = `${backendUrl}/api/public/checkout/webpay-return?pedidoId=${pedidoId}`;
 
     // Si Transbank rechaza la apertura de la transacción (credenciales que aún

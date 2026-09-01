@@ -251,6 +251,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
+require('./utils/urlBackend').avisarSiEsSospechosa();
+
 // ─── Coherencia de las credenciales de Webpay ──────────────────────
 // La llave de integración es pública (viene en el SDK), así que es fácil
 // acabar con ella puesta como si fuera la propia. Con un código de comercio
