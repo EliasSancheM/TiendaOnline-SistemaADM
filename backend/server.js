@@ -171,38 +171,10 @@ app.use('/api/diagnostico', diagnosticoRoutes);
  * en GET /api/diagnostico/pagos.
  */
 function estadoDePagos() {
-  const { IntegrationApiKeys } = require('transbank-sdk');
-
-  const enProduccion = (process.env.WEBPAY_ENVIRONMENT || '').toLowerCase() === 'production';
-  const tieneCodigo = !!process.env.WEBPAY_COMMERCE_CODE;
-  const tieneLlave = !!process.env.WEBPAY_API_KEY;
-  const llaveEsLaDePruebas =
-    tieneLlave && process.env.WEBPAY_API_KEY.trim() === IntegrationApiKeys.WEBPAY;
-
-  // Solo hay dos combinaciones que funcionan: todo de pruebas (ninguna
-  // variable puesta) o todo propio (las dos puestas, en producción, con una
-  // llave que no sea la pública). Cualquier mezcla la rechaza Transbank.
-  let coherente;
-  let motivo = null;
-  if (!tieneCodigo && !tieneLlave && !enProduccion) {
-    coherente = true; // credenciales de prueba completas
-  } else if (enProduccion && tieneCodigo && tieneLlave && !llaveEsLaDePruebas) {
-    coherente = true; // credenciales propias completas
-  } else {
-    coherente = false;
-    if (llaveEsLaDePruebas) motivo = 'la llave configurada es la publica de pruebas de Transbank';
-    else if (enProduccion && (!tieneCodigo || !tieneLlave)) motivo = 'ambiente produccion pero falta el codigo de comercio o la llave';
-    else if (!enProduccion && (tieneCodigo || tieneLlave)) motivo = 'credenciales propias apuntando al servidor de pruebas';
-    else motivo = 'combinacion no reconocida';
-  }
+  const { evaluarConfiguracion } = require('./utils/estadoWebpay');
 
   return {
-    ambiente: enProduccion ? 'produccion' : 'integracion',
-    codigoDeComercioPropio: tieneCodigo,
-    llavePropia: tieneLlave,
-    llaveEsLaDePruebas,
-    coherente,
-    motivo,
+    ...evaluarConfiguracion(process.env),
     // BACKEND_URL compone la dirección de retorno que se envía a Transbank. Si
     // está mal (sin https, con una barra de más, apuntando a otro sitio),
     // Transbank rechaza la transacción sin que nada más parezca fuera de sitio.
