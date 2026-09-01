@@ -158,8 +158,56 @@ app.use('/api/diagnostico', diagnosticoRoutes);
 // Health check: Railway y cualquier monitor necesitan una ruta que responda 200
 // sin tocar la base de datos ni exigir autenticación. Va ANTES del catch-all del
 // SPA para que no lo intercepte.
+/**
+ * Estado de la configuración de pagos, SIN datos sensibles.
+ *
+ * Solo booleanos y el nombre del ambiente: ni el código de comercio ni la
+ * llave, ni siquiera enmascarados. Con esto no se puede cobrar ni suplantar
+ * nada, pero basta para saber desde fuera por qué el checkout no funciona,
+ * que es justo lo que costaba averiguar: el cliente solo veía "no pudimos
+ * conectar con el sistema de pagos" y la causa quedaba dentro del servidor.
+ *
+ * El detalle con el mensaje literal de Transbank sigue exigiendo rol admin,
+ * en GET /api/diagnostico/pagos.
+ */
+function estadoDePagos() {
+  const { IntegrationApiKeys } = require('transbank-sdk');
+
+  const enProduccion = (process.env.WEBPAY_ENVIRONMENT || '').toLowerCase() === 'production';
+  const tieneCodigo = !!process.env.WEBPAY_COMMERCE_CODE;
+  const tieneLlave = !!process.env.WEBPAY_API_KEY;
+  const llaveEsLaDePruebas =
+    tieneLlave && process.env.WEBPAY_API_KEY.trim() === IntegrationApiKeys.WEBPAY;
+
+  // Solo hay dos combinaciones que funcionan: todo de pruebas (ninguna
+  // variable puesta) o todo propio (las dos puestas, en producción, con una
+  // llave que no sea la pública). Cualquier mezcla la rechaza Transbank.
+  let coherente;
+  let motivo = null;
+  if (!tieneCodigo && !tieneLlave && !enProduccion) {
+    coherente = true; // credenciales de prueba completas
+  } else if (enProduccion && tieneCodigo && tieneLlave && !llaveEsLaDePruebas) {
+    coherente = true; // credenciales propias completas
+  } else {
+    coherente = false;
+    if (llaveEsLaDePruebas) motivo = 'la llave configurada es la publica de pruebas de Transbank';
+    else if (enProduccion && (!tieneCodigo || !tieneLlave)) motivo = 'ambiente produccion pero falta el codigo de comercio o la llave';
+    else if (!enProduccion && (tieneCodigo || tieneLlave)) motivo = 'credenciales propias apuntando al servidor de pruebas';
+    else motivo = 'combinacion no reconocida';
+  }
+
+  return {
+    ambiente: enProduccion ? 'produccion' : 'integracion',
+    codigoDeComercioPropio: tieneCodigo,
+    llavePropia: tieneLlave,
+    llaveEsLaDePruebas,
+    coherente,
+    motivo
+  };
+}
+
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() });
+  res.json({ status: 'ok', uptime: process.uptime(), pagos: estadoDePagos() });
 });
 
 // ─── Producción: servir frontend desde el backend ──────────────────
