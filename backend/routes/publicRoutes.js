@@ -167,26 +167,67 @@ router.all('/checkout/webpay-return', async (req, res) => {
     // El retorno de Transbank puede llegar por GET (query) o POST (form body).
     // req.body puede ser undefined si el usuario anula sin enviar cuerpo.
     const body = req.body || {};
-    const token = req.query.token_ws || body.token_ws;
-    const urlPedidoId = req.query.pedidoId || body.pedidoId;
-    verifiedPedidoId = urlPedidoId ? parseInt(urlPedidoId) : null;
+    const dato = (nombre) => req.query[nombre] || body[nombre];
 
-    // 1. Si no hay token, el usuario anuló la transacción o Transbank retornó sin token
-    if (!token) {
-      logger.warn(`Pago anulado por el usuario para pedidoId: ${verifiedPedidoId}`);
+    // Transbank usa nombres DISTINTOS según cómo terminó la transacción:
+    //
+    //   token_ws              el flujo normal: el usuario pagó (o lo intentó) y
+    //                         hay que confirmar con commit().
+    //   TBK_TOKEN             el usuario pulsó "Anular compra" en el formulario.
+    //                         NO se debe confirmar: no existe transacción que
+    //                         confirmar y llamar a commit() da error.
+    //   TBK_ORDEN_COMPRA      la orden de compra (nuestro buy_order, 'O-<id>').
+    //   TBK_ID_SESION         el session_id que enviamos al crear la transacción.
+    //
+    // Si llegan token_ws y TBK_TOKEN a la vez, la compra se abandonó y luego se
+    // reintentó: tampoco se confirma. Ante la duda, no se confirma nunca.
+    const tokenWs = dato('token_ws');
+    const tbkToken = dato('TBK_TOKEN');
+    const tbkOrdenCompra = dato('TBK_ORDEN_COMPRA');
+    const tbkIdSesion = dato('TBK_ID_SESION');
+
+    // La orden que manda Transbank identifica el pedido mejor que el pedidoId
+    // que añadimos nosotros a la URL de retorno, porque no depende de que ese
+    // parámetro sobreviva a la redirección.
+    const idDeLaOrden = typeof tbkOrdenCompra === 'string' && tbkOrdenCompra.startsWith('O-')
+      ? parseInt(tbkOrdenCompra.slice(2), 10)
+      : NaN;
+    const idDeLaUrl = parseInt(dato('pedidoId'), 10);
+    verifiedPedidoId = Number.isInteger(idDeLaOrden) ? idDeLaOrden
+      : (Number.isInteger(idDeLaUrl) ? idDeLaUrl : null);
+
+    // 1. Transacción abandonada: anulada por el usuario, o caducada por tiempo.
+    //    En ninguno de los dos casos se llama a commit().
+    if (!tokenWs || tbkToken) {
+      const motivo = tbkToken
+        ? 'anulada por el usuario en el formulario de Webpay'
+        : (tbkOrdenCompra ? 'caducada por inactividad en Webpay' : 'retorno sin token');
+
+      logger.warn(
+        `Transacción ${motivo} (pedido: ${verifiedPedidoId}, ` +
+        `orden: ${tbkOrdenCompra || '—'}, sesión: ${tbkIdSesion || '—'})`
+      );
+
       if (verifiedPedidoId) {
-        // Validación de seguridad: solo cancelar si está pendiente de pago
-        const orderToCheck = await db.getAsync("SELECT estado FROM pedidos WHERE id = ?", [verifiedPedidoId]);
-        if (orderToCheck && orderToCheck.estado === 'pendiente_pago') {
+        // Solo se anula si seguía esperando el pago: si ya estaba pagado, este
+        // retorno tardío no puede deshacerlo.
+        const pedido = await db.getAsync("SELECT estado FROM pedidos WHERE id = ?", [verifiedPedidoId]);
+        if (pedido && pedido.estado === 'pendiente_pago') {
           await db.runAsync("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", [verifiedPedidoId]);
-          logger.info(`Pedido ${verifiedPedidoId} cancelado de forma segura tras anulación del usuario.`);
+          logger.info(`Pedido ${verifiedPedidoId} anulado sin confirmar el pago.`);
         } else {
-          logger.warn(`Intento de cancelación bloqueado. Pedido ${verifiedPedidoId} en estado: ${orderToCheck ? orderToCheck.estado : 'inexistente'}`);
+          logger.warn(
+            `No se anula el pedido ${verifiedPedidoId}: estado actual ` +
+            `${pedido ? pedido.estado : 'inexistente'}`
+          );
         }
       }
+
       const frontendUrl = baseDelFrontend();
       return res.redirect(`${frontendUrl}/checkout?status=rejected`);
     }
+
+    const token = tokenWs;
 
     // 2. Confirmar transacción con Transbank
     const commitResponse = await commitTransaction(token);

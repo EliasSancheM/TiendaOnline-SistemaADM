@@ -360,3 +360,105 @@ describe('Cuando Transbank no acepta abrir la transaccion', () => {
     expect(vivos).toHaveLength(0);
   });
 });
+
+describe('Compra anulada por el usuario en el formulario de Webpay', () => {
+  // Transbank usa nombres DISTINTOS cuando el usuario pulsa "Anular compra":
+  // manda TBK_TOKEN en lugar de token_ws, mas TBK_ORDEN_COMPRA y TBK_ID_SESION.
+  // Y en ese caso NO se debe confirmar la transaccion: no hay ninguna que
+  // confirmar, y llamar a commit() da error.
+  let pedidoId;
+
+  beforeEach(async () => {
+    mockCommitTransaction.mockReset();
+    await mockDb.runAsync('DELETE FROM pedidos');
+    const r = await mockDb.runAsync(
+      `INSERT INTO pedidos (cliente_id, fecha, periodo, estado, total)
+       VALUES (1, '2026-09-01', 'mañana', 'pendiente_pago', 1500)`
+    );
+    pedidoId = r.lastID;
+  });
+
+  const estadoDelPedido = async () =>
+    (await mockDb.getAsync('SELECT estado FROM pedidos WHERE id = ?', [pedidoId])).estado;
+
+  it('NO confirma la transaccion cuando llega TBK_TOKEN', async () => {
+    await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({
+        TBK_TOKEN: 'e8b3f2a1c4d5',
+        TBK_ORDEN_COMPRA: `O-${pedidoId}`,
+        TBK_ID_SESION: 'S-1'
+      });
+
+    expect(mockCommitTransaction).not.toHaveBeenCalled();
+  });
+
+  it('anula el pedido y devuelve al cliente a la tienda', async () => {
+    const res = await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({
+        TBK_TOKEN: 'e8b3f2a1c4d5',
+        TBK_ORDEN_COMPRA: `O-${pedidoId}`,
+        TBK_ID_SESION: 'S-1'
+      });
+
+    expect(res.statusCode).toBe(302);
+    expect(res.headers.location).toMatch(/status=rejected/);
+    expect(await estadoDelPedido()).toBe('cancelado');
+  });
+
+  it('identifica el pedido por TBK_ORDEN_COMPRA, sin depender de nuestro pedidoId', async () => {
+    // La orden la manda Transbank; el pedidoId lo añadimos nosotros a la URL de
+    // retorno y podria no sobrevivir a la redireccion.
+    await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({ TBK_TOKEN: 'abc', TBK_ORDEN_COMPRA: `O-${pedidoId}`, TBK_ID_SESION: 'S-1' });
+
+    expect(await estadoDelPedido()).toBe('cancelado');
+  });
+
+  it('tampoco confirma si llegan token_ws y TBK_TOKEN a la vez', async () => {
+    // Compra abandonada y reintentada: ante la duda, no se confirma.
+    await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({ token_ws: 'tok-abc', TBK_TOKEN: 'abc', TBK_ORDEN_COMPRA: `O-${pedidoId}` });
+
+    expect(mockCommitTransaction).not.toHaveBeenCalled();
+    expect(await estadoDelPedido()).toBe('cancelado');
+  });
+
+  it('trata la sesion caducada igual: sin confirmar', async () => {
+    // Transbank manda la orden y la sesion, pero ningun token.
+    await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({ TBK_ORDEN_COMPRA: `O-${pedidoId}`, TBK_ID_SESION: 'S-1' });
+
+    expect(mockCommitTransaction).not.toHaveBeenCalled();
+    expect(await estadoDelPedido()).toBe('cancelado');
+  });
+
+  it('un retorno tardio no deshace un pedido ya pagado', async () => {
+    await mockDb.runAsync("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", [pedidoId]);
+
+    await request(app)
+      .post('/api/public/checkout/webpay-return')
+      .type('form')
+      .send({ TBK_TOKEN: 'abc', TBK_ORDEN_COMPRA: `O-${pedidoId}` });
+
+    expect(await estadoDelPedido()).toBe('pendiente');
+  });
+
+  it('acepta el retorno tambien por GET', async () => {
+    const res = await request(app)
+      .get(`/api/public/checkout/webpay-return?TBK_TOKEN=abc&TBK_ORDEN_COMPRA=O-${pedidoId}&TBK_ID_SESION=S-1`);
+
+    expect(mockCommitTransaction).not.toHaveBeenCalled();
+    expect(res.headers.location).toMatch(/status=rejected/);
+    expect(await estadoDelPedido()).toBe('cancelado');
+  });
+});
