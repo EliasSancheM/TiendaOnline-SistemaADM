@@ -70,3 +70,41 @@ describe('baseDelBackend()', () => {
     expect(baseDelBackend(peticion())).toBe('https://api.ejemplo.cl');
   });
 });
+
+describe('baseDelFrontend()', () => {
+  const { baseDelFrontend } = require('../utils/urlBackend');
+  const original = process.env.FRONTEND_URL;
+
+  afterEach(() => {
+    if (original === undefined) delete process.env.FRONTEND_URL;
+    else process.env.FRONTEND_URL = original;
+  });
+
+  it('corrige el dominio sin esquema', () => {
+    // El mismo descuido que tumbó los pagos con BACKEND_URL: copiar el dominio
+    // del panel tal cual. Aquí no rompe el cobro, pero deja al cliente en una
+    // pagina que no carga justo despues de pagar.
+    process.env.FRONTEND_URL = 'dondelaeli.com';
+    expect(baseDelFrontend()).toBe('https://dondelaeli.com');
+  });
+
+  it('quita la barra final para no generar una doble barra', () => {
+    process.env.FRONTEND_URL = 'https://dondelaeli.com/';
+    expect(baseDelFrontend()).toBe('https://dondelaeli.com');
+    expect(`${baseDelFrontend()}/checkout?status=success`)
+      .toBe('https://dondelaeli.com/checkout?status=success');
+  });
+
+  it('sin configurar cae en localhost, que es lo correcto en desarrollo', () => {
+    delete process.env.FRONTEND_URL;
+    expect(baseDelFrontend()).toBe('http://localhost:3000');
+  });
+
+  it('la URL de retorno al cliente queda bien formada', () => {
+    process.env.FRONTEND_URL = 'dondelaeli.com';
+    const url = new URL(`${baseDelFrontend()}/checkout?status=success`);
+    expect(url.protocol).toBe('https:');
+    expect(url.host).toBe('dondelaeli.com');
+    expect(url.searchParams.get('status')).toBe('success');
+  });
+});

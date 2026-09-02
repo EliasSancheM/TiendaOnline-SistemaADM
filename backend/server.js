@@ -179,6 +179,9 @@ function estadoDePagos() {
     // está mal (sin https, con una barra de más, apuntando a otro sitio),
     // Transbank rechaza la transacción sin que nada más parezca fuera de sitio.
     baseDeRetornoConfigurada: process.env.BACKEND_URL || null,
+    // A donde vuelve el cliente tras pagar. Sin configurar apunta a localhost:
+    // el cobro se hace, pero el cliente ve una pagina rota y cree que fallo.
+    baseDelFrontendConfigurada: process.env.FRONTEND_URL || null,
     ultimoFalloDePasarela: require('./utils/estadoPasarela').ultimoFallo()
   };
 }

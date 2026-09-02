@@ -7,7 +7,7 @@ const { createTransaction, commitTransaction } = require('../utils/webpayService
 const { validate, publicCheckoutSchema } = require('../middlewares/validatorMiddleware');
 const { soloFecha } = require('../utils/fechas');
 const { registrarFallo, registrarExito } = require('../utils/estadoPasarela');
-const { baseDelBackend } = require('../utils/urlBackend');
+const { baseDelBackend, baseDelFrontend } = require('../utils/urlBackend');
 
 // POST /api/public/checkout — Crear pedido e iniciar pago con Webpay
 router.post('/checkout', validate(publicCheckoutSchema), async (req, res) => {
@@ -184,7 +184,7 @@ router.all('/checkout/webpay-return', async (req, res) => {
           logger.warn(`Intento de cancelación bloqueado. Pedido ${verifiedPedidoId} en estado: ${orderToCheck ? orderToCheck.estado : 'inexistente'}`);
         }
       }
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const frontendUrl = baseDelFrontend();
       return res.redirect(`${frontendUrl}/checkout?status=rejected`);
     }
 
@@ -231,7 +231,7 @@ router.all('/checkout/webpay-return', async (req, res) => {
           .catch(err => logger.error(`Error enviando correo post-pago: ${err.message}`));
       }
 
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const frontendUrl = baseDelFrontend();
       return res.redirect(`${frontendUrl}/checkout?status=success`);
     } else {
       // Registrar razones específicas del fallo de validación
@@ -248,7 +248,7 @@ router.all('/checkout/webpay-return', async (req, res) => {
         await db.runAsync("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", [verifiedPedidoId]);
       }
       
-      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      const frontendUrl = baseDelFrontend();
       return res.redirect(`${frontendUrl}/checkout?status=rejected`);
     }
   } catch (error) {
@@ -264,7 +264,7 @@ router.all('/checkout/webpay-return', async (req, res) => {
     } catch (dbError) {
       logger.error('Error al actualizar pedido a cancelado tras excepción:', dbError);
     }
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const frontendUrl = baseDelFrontend();
     return res.redirect(`${frontendUrl}/checkout?status=error`);
   }
 });

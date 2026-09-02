@@ -33,6 +33,24 @@ function baseDelBackend(req) {
   return normalizar(configurada);
 }
 
+/**
+ * Dirección pública del frontend, a la que se devuelve al cliente después de
+ * pagar (…/checkout?status=success).
+ *
+ * Por defecto vale 'http://localhost:3000', que es lo correcto en desarrollo y
+ * una trampa en producción: el pago se cobra, Transbank redirige, y el cliente
+ * acaba en una página que no existe. Desde su punto de vista el dinero se fue y
+ * la compra falló, aunque el pedido esté bien registrado.
+ *
+ * Se normaliza igual que la del backend, porque el descuido es el mismo: copiar
+ * el dominio del panel sin el https://.
+ */
+function baseDelFrontend() {
+  const configurada = (process.env.FRONTEND_URL || '').trim();
+  if (!configurada) return 'http://localhost:3000';
+  return normalizar(configurada);
+}
+
 /** Añade el esquema si falta y quita las barras finales. */
 function normalizar(valor) {
   const conEsquema = /^https?:\/\//i.test(valor) ? valor : `https://${valor}`;
@@ -59,4 +77,4 @@ function avisarSiEsSospechosa() {
   }
 }
 
-module.exports = { baseDelBackend, normalizar, avisarSiEsSospechosa };
+module.exports = { baseDelBackend, baseDelFrontend, normalizar, avisarSiEsSospechosa };
